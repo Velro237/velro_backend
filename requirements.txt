@@ -6,3 +6,6 @@ django-allauth
 psycopg2-binary
 django-cors-headers
 python-dotenv
+channels
+channels-redis
+daphne
