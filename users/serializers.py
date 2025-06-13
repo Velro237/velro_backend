@@ -22,6 +22,16 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
         model = User
         fields = ('email', 'username', 'first_name', 'last_name', 'phone_number', 'password', 'confirm_password')
 
+    def validate_phone_number(self, value):
+        # Remove any spaces, dashes, or parentheses
+        phone = ''.join(filter(str.isdigit, value))
+        
+        # Check if the phone number has a valid length (adjust these rules as needed)
+        if len(phone) < 10 or len(phone) > 15:
+            raise serializers.ValidationError("Phone number must be between 10 and 15 digits")
+        
+        return phone
+
     def validate(self, data):
         if data['password'] != data['confirm_password']:
             raise serializers.ValidationError("Passwords don't match")

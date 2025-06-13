@@ -1,14 +1,19 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
-from .views import UserViewSet, ProfileViewSet
+from rest_framework_simplejwt.views import TokenRefreshView
+from .views import (
+    UserViewSet, ProfileViewSet, UserLoginView,
+    GoogleSignInView, AppleSignInView
+)
 
 router = DefaultRouter()
 router.register(r'users', UserViewSet)
-router.register(r'profile', ProfileViewSet, basename='profile')
+router.register(r'profiles', ProfileViewSet)
 
 urlpatterns = [
     path('', include(router.urls)),
-    path('token/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
+    path('login/', UserLoginView.as_view(), name='user_login'),
     path('token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
+    path('google/signin/', GoogleSignInView.as_view(), name='google_signin'),
+    path('apple/signin/', AppleSignInView.as_view(), name='apple_signin'),
 ]
