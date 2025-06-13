@@ -6,6 +6,7 @@ ENV PYTHONDONTWRITEBYTECODE 1
 ENV PYTHONUNBUFFERED 1
 ENV SECRET_KEY=django-insecure-temporary-key-for-build
 ENV DEBUG=False
+ENV DATABASE_URL=postgres://postgres:postgres@localhost:5432/postgres
 
 # Set work directory
 WORKDIR /app
