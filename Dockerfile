@@ -2,9 +2,9 @@
 FROM python:3.11-slim
 
 # Set environment variables
-ENV PYTHONDONTWRITEBYTECODE 1
-ENV PYTHONUNBUFFERED 1
-ENV SECRET_KEY=django-insecure-temporary-key-for-build
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+ENV SECRET_KEY=your-secret-key-here
 ENV DEBUG=False
 ENV DATABASE_URL=postgres://postgres:postgres@localhost:5432/postgres
 
@@ -12,11 +12,10 @@ ENV DATABASE_URL=postgres://postgres:postgres@localhost:5432/postgres
 WORKDIR /app
 
 # Install system dependencies
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends \
-        postgresql-client \
-        build-essential \
-        libpq-dev \
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    libpq-dev \
+    netcat-traditional \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Python dependencies
@@ -26,8 +25,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy project
 COPY . .
 
-# Collect static files
-RUN python manage.py collectstatic --noinput
+# Make entrypoint script executable
+RUN chmod +x entrypoint.sh
 
-# Run daphne
-CMD ["daphne", "-b", "0.0.0.0", "-p", "8000", "config.asgi:application"] 
+# Run entrypoint script
+ENTRYPOINT ["./entrypoint.sh"] 
