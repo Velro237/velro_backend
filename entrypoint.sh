@@ -1,10 +1,5 @@
 #!/bin/sh
 
-# Load environment variables from .env file
-set -a
-source .env
-set +a
-
 # Run migrations
 echo "Running migrations..."
 python manage.py makemigrations
