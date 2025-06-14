@@ -1,5 +1,10 @@
 #!/bin/sh
 
+# Load environment variables from .env file
+set -a
+source .env
+set +a
+
 # Wait for database to be ready
 echo "Waiting for database..."
 while ! nc -z $DB_HOST $DB_PORT; do

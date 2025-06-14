@@ -4,9 +4,6 @@ FROM python:3.11-slim
 # Set environment variables
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
-ENV SECRET_KEY=your-secret-key-here
-ENV DEBUG=False
-ENV DATABASE_URL=postgres://postgres:postgres@localhost:5432/postgres
 
 # Set work directory
 WORKDIR /app
@@ -21,6 +18,9 @@ RUN apt-get update && apt-get install -y \
 # Install Python dependencies
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy .env file first
+COPY .env .
 
 # Copy project
 COPY . .
