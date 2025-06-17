@@ -5,6 +5,10 @@ echo "Running migrations..."
 python manage.py makemigrations
 python manage.py migrate
 
+# Create superuser
+echo "Creating superuser..."
+python manage.py create_superuser
+
 # Collect static files
 echo "Collecting static files..."
 python manage.py collectstatic --noinput --clear
