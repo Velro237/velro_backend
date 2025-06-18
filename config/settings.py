@@ -267,17 +267,17 @@ APPLE_PUBLIC_KEY_URL = 'https://appleid.apple.com/auth/keys'
 # Configure WhiteNoise
 STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 
-# Security settings for production
-if not DEBUG:
-    SECURE_BROWSER_XSS_FILTER = True
-    SECURE_CONTENT_TYPE_NOSNIFF = True
-    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
-    SECURE_HSTS_SECONDS = 31536000
-    SECURE_REDIRECT_EXEMPT = []
-    SECURE_SSL_REDIRECT = True
-    X_FRAME_OPTIONS = 'DENY'
+# # Security settings for production
+# if not DEBUG:
+#     SECURE_BROWSER_XSS_FILTER = True
+#     SECURE_CONTENT_TYPE_NOSNIFF = True
+#     SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+#     SECURE_HSTS_SECONDS = 31536000
+#     SECURE_REDIRECT_EXEMPT = []
+#     SECURE_SSL_REDIRECT = True
+#     X_FRAME_OPTIONS = 'DENY'
     
-    # Additional session security
-    SESSION_EXPIRE_AT_BROWSER_CLOSE = True
-    SESSION_COOKIE_AGE = 3600  # 1 hour
-    SESSION_SAVE_EVERY_REQUEST = True
+#     # Additional session security
+#     SESSION_EXPIRE_AT_BROWSER_CLOSE = True
+#     SESSION_COOKIE_AGE = 3600  # 1 hour
+#     SESSION_SAVE_EVERY_REQUEST = True
