@@ -19,7 +19,12 @@ class ConversationViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        return Conversation.objects.filter(participants=self.request.user)
+        user = self.request.user
+        return Conversation.objects.filter(
+            Q(participants=user) |
+            Q(travel_listing__user=user) |
+            Q(package_request__user=user)
+        ).distinct()
 
     def get_serializer_class(self):
         if self.action == 'create':
@@ -98,24 +103,35 @@ class MessageViewSet(StandardResponseViewSet):
         serializer.save(sender=self.request.user)
 
     def get_queryset(self):
+        user = self.request.user
         return Message.objects.filter(
-            Q(sender=self.request.user) | Q(receiver=self.request.user)
-        ).order_by('-created_at')
+            Q(conversation__participants=user) |
+            Q(conversation__travel_listing__user=user) |
+            Q(conversation__package_request__user=user)
+        ).distinct().order_by('-created_at')
 
 class MessageAttachmentViewSet(viewsets.ModelViewSet):
     serializer_class = MessageAttachmentSerializer
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
+        user = self.request.user
         return MessageAttachment.objects.filter(
-            message__conversation__participants=self.request.user
-        )
+            Q(message__conversation__participants=user) |
+            Q(message__conversation__travel_listing__user=user) |
+            Q(message__conversation__package_request__user=user)
+        ).distinct()
 
     def perform_create(self, serializer):
         message_id = self.request.data.get('message')
+        user = self.request.user
+        
+        # Check if user has access to the message
         message = get_object_or_404(
             Message.objects.filter(
-                conversation__participants=self.request.user
+                Q(conversation__participants=user) |
+                Q(conversation__travel_listing__user=user) |
+                Q(conversation__package_request__user=user)
             ),
             id=message_id
         )

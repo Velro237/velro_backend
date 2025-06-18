@@ -2,7 +2,6 @@ import json
 from channels.generic.websocket import AsyncWebsocketConsumer
 from channels.db import database_sync_to_async
 from django.contrib.auth import get_user_model
-from .models import Conversation, Message, MessageAttachment
 from django.core.files.base import ContentFile
 import base64
 
@@ -93,6 +92,9 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
     @database_sync_to_async
     def save_message(self, content, attachments):
+        # Import models here to avoid circular imports
+        from .models import Conversation, Message, MessageAttachment
+        
         conversation = Conversation.objects.get(id=self.conversation_id)
         message = Message.objects.create(
             conversation=conversation,
