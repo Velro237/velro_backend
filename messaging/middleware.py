@@ -25,13 +25,18 @@ class JWTAuthMiddleware(BaseMiddleware):
             try:
                 # Verify the token and get the user
                 access_token = AccessToken(token)
+                print(access_token)
                 user_id = access_token['user_id']
+                print(user_id)
                 user = await self.get_user(user_id)
+                print(user)
                 scope['user'] = user
             except Exception as e:
+                print(e)
                 scope['user'] = AnonymousUser()
         else:
             scope['user'] = AnonymousUser()
+            print("No token provided 000000000000000000000")
 
         return await self.inner(scope, receive, send)
 

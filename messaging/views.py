@@ -3,14 +3,14 @@ from rest_framework import viewsets, status, permissions
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
-from django.db.models import Q
-from .models import Conversation, Message, MessageAttachment
+from .models import Conversation, Message
 from .serializers import (
     ConversationSerializer, ConversationCreateSerializer,
-    MessageSerializer, MessageAttachmentSerializer
+    MessageSerializer
 )
 from .utils import send_message_to_conversation, send_typing_indicator
 from config.views import StandardResponseViewSet
+from .permissions import IsMessageOwner
 
 # Create your views here.
 
@@ -20,11 +20,8 @@ class ConversationViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
-        return Conversation.objects.filter(
-            Q(participants=user) |
-            Q(travel_listing__user=user) |
-            Q(package_request__user=user)
-        ).distinct()
+        return Conversation.objects.filter(participants=user).distinct()
+
 
     def get_serializer_class(self):
         if self.action == 'create':
@@ -33,7 +30,17 @@ class ConversationViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         conversation = serializer.save()
-        conversation.participants.add(self.request.user)
+        user_ids = {self.request.user.id}
+
+        # Add travel_listing owner if exists
+        if conversation.travel_listing and conversation.travel_listing.user:
+            user_ids.add(conversation.travel_listing.user.id)
+
+        # Add package_request owner if exists
+        if conversation.package_request and conversation.package_request.user:
+            user_ids.add(conversation.package_request.user.id)
+
+        conversation.participants.add(*user_ids)
 
     @action(detail=True, methods=['get'])
     def messages(self, request, pk=None):
@@ -104,39 +111,9 @@ class MessageViewSet(StandardResponseViewSet):
 
     def get_queryset(self):
         user = self.request.user
-        return Message.objects.filter(
-            Q(conversation__participants=user) |
-            Q(conversation__travel_listing__user=user) |
-            Q(conversation__package_request__user=user)
-        ).distinct().order_by('-created_at')
+        return Message.objects.filter(conversation__participants=user).distinct().order_by('-created_at')
 
-class MessageAttachmentViewSet(viewsets.ModelViewSet):
-    serializer_class = MessageAttachmentSerializer
-    permission_classes = [IsAuthenticated]
-
-    def get_queryset(self):
-        user = self.request.user
-        return MessageAttachment.objects.filter(
-            Q(message__conversation__participants=user) |
-            Q(message__conversation__travel_listing__user=user) |
-            Q(message__conversation__package_request__user=user)
-        ).distinct()
-
-    def perform_create(self, serializer):
-        message_id = self.request.data.get('message')
-        user = self.request.user
-        
-        # Check if user has access to the message
-        message = get_object_or_404(
-            Message.objects.filter(
-                Q(conversation__participants=user) |
-                Q(conversation__travel_listing__user=user) |
-                Q(conversation__package_request__user=user)
-            ),
-            id=message_id
-        )
-        attachment = serializer.save(message=message)
-        
-        # Send updated message through WebSocket
-        message_data = MessageSerializer(message).data
-        send_message_to_conversation(message.conversation.id, message_data)
+    def get_permissions(self):
+        if self.action in ['update', 'partial_update', 'destroy']:
+            return [permissions.IsAuthenticated(), IsMessageOwner()]
+        return [permissions.IsAuthenticated()]

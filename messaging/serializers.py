@@ -1,44 +1,17 @@
 from rest_framework import serializers
-from .models import Conversation, Message, MessageAttachment
+from .models import Conversation, Message
 from users.serializers import UserProfileSerializer
 from listings.serializers import TravelListingSerializer, PackageRequestSerializer
 
-class MessageAttachmentSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = MessageAttachment
-        fields = ('id', 'file', 'file_name', 'file_type', 'created_at')
-        read_only_fields = ('created_at',)
 
 class MessageSerializer(serializers.ModelSerializer):
     sender = UserProfileSerializer(read_only=True)
-    attachments = MessageAttachmentSerializer(many=True, read_only=True)
-    uploaded_files = serializers.ListField(
-        child=serializers.FileField(),
-        write_only=True,
-        required=False
-    )
-
     class Meta:
         model = Message
         fields = ('id', 'conversation', 'sender', 'content', 'is_read',
-                 'created_at', 'attachments', 'uploaded_files')
+                 'created_at')
         read_only_fields = ('created_at', 'is_read')
-
-    def create(self, validated_data):
-        uploaded_files = validated_data.pop('uploaded_files', [])
-        message = Message.objects.create(**validated_data)
         
-        # Handle file attachments
-        for file in uploaded_files:
-            MessageAttachment.objects.create(
-                message=message,
-                file=file,
-                file_name=file.name,
-                file_type=file.content_type
-            )
-        
-        return message
-
 class ConversationSerializer(serializers.ModelSerializer):
     participants = UserProfileSerializer(many=True, read_only=True)
     travel_listing = TravelListingSerializer(read_only=True)
