@@ -3,10 +3,10 @@ from rest_framework import viewsets, status, permissions
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
-from .models import Conversation, Message
+from .models import Conversation, Message, MessageAttachment
 from .serializers import (
     ConversationSerializer, ConversationCreateSerializer,
-    MessageSerializer
+    MessageSerializer, MessageAttachmentSerializer
 )
 from .utils import send_message_to_conversation, send_typing_indicator
 from config.views import StandardResponseViewSet
@@ -117,3 +117,27 @@ class MessageViewSet(StandardResponseViewSet):
         if self.action in ['update', 'partial_update', 'destroy']:
             return [permissions.IsAuthenticated(), IsMessageOwner()]
         return [permissions.IsAuthenticated()]
+
+
+class MessageAttachmentViewSet(viewsets.ModelViewSet):
+    serializer_class = MessageAttachmentSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        user = self.request.user
+        return MessageAttachment.objects.filter(message__conversation__participants=user).distinct()
+
+    def perform_create(self, serializer):
+        message_id = self.request.data.get('message')
+        user = self.request.user
+        
+        # Check if user has access to the message
+        message = get_object_or_404(
+            Message.objects.filter(conversation__participants=user),
+            id=message_id
+        )
+        attachment = serializer.save(message=message)
+        
+        # Send updated message through WebSocket
+        message_data = MessageSerializer(message).data
+        send_message_to_conversation(message.conversation.id, message_data)

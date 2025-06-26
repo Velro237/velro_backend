@@ -1,13 +1,13 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
-from .models import CustomUser, Profile, OTP
+from .models import CustomUser, Profile, OTP, IdType
 
 class ProfileInline(admin.StackedInline):
     model = Profile
     can_delete = False
     verbose_name_plural = 'Profile'
     fields = ('profile_picture', 'contact_info', 'languages', 'travel_history', 
-              'preferences', 'identity_card', 'selfie_photo', 'phone_number', 
+              'preferences', 'front_side_identity_card', 'back_side_identity_card', 'selfie_photo', 
               'address', 'created_at', 'updated_at')
     readonly_fields = ('created_at', 'updated_at')
 
@@ -39,17 +39,40 @@ class CustomUserAdmin(UserAdmin):
         }),
     )
 
+    def get_readonly_fields(self, request, obj=None):
+        # Make all fields readonly except is_identity_verified
+        all_fields = [
+            'email', 'username', 'password', 'first_name', 'last_name', 'phone_number',
+            'is_email_verified', 'is_phone_verified', 'is_profile_completed',
+            'privacy_policy_accepted', 'date_privacy_accepted', 'is_active', 'is_staff',
+            'is_superuser', 'groups', 'user_permissions', 'last_login', 'date_joined'
+        ]
+        # Remove is_identity_verified from readonly
+        readonly = [f for f in all_fields if f != 'is_identity_verified']
+        return readonly
+
 @admin.register(Profile)
 class ProfileAdmin(admin.ModelAdmin):
-    list_display = ('id', 'user', 'phone_number', 'created_at', 'updated_at')
+    list_display = (
+        'id', 'user', 'profile_picture', 'contact_info', 'languages', 'travel_history',
+        'preferences', 'selfie_photo', 'address', 'city_of_residence', 'id_type',
+        'issue_country', 'front_side_identity_card', 'back_side_identity_card',
+        'created_at', 'updated_at'
+    )
     list_filter = ('created_at', 'updated_at')
-    search_fields = ('user__email', 'user__username', 'phone_number', 'contact_info', 'address')
-    readonly_fields = ('created_at', 'updated_at')
+    search_fields = ('user__email', 'user__username', 'contact_info', 'address')
+    readonly_fields = (
+        'user', 'profile_picture', 'contact_info', 'languages', 'travel_history',
+        'preferences', 'selfie_photo', 'address', 'city_of_residence', 'id_type',
+        'issue_country', 'front_side_identity_card', 'back_side_identity_card',
+        'created_at', 'updated_at'
+    )
     fieldsets = (
         ('User Information', {'fields': ('user',)}),
-        ('Contact Information', {'fields': ('phone_number', 'contact_info', 'address')}),
+        ('Contact Information', {'fields': ('contact_info', 'address')}),
         ('Profile Details', {'fields': ('profile_picture', 'languages', 'travel_history', 'preferences')}),
-        ('Verification Documents', {'fields': ('identity_card', 'selfie_photo')}),
+        ('Location & ID', {'fields': ('city_of_residence', 'id_type', 'issue_country')}),
+        ('Verification Documents', {'fields': ('front_side_identity_card', 'back_side_identity_card', 'selfie_photo')}),
         ('Timestamps', {'fields': ('created_at', 'updated_at')}),
     )
 
@@ -64,5 +87,11 @@ class OTPAdmin(admin.ModelAdmin):
     def phone_number(self, obj):
         return obj.user.phone_number
     phone_number.short_description = 'Phone Number'
+
+@admin.register(IdType)
+class IdTypeAdmin(admin.ModelAdmin):
+    list_display = ('name', 'description', 'created_at', 'updated_at')
+    search_fields = ('name',)
+    readonly_fields = ('created_at', 'updated_at')
 
 admin.site.register(CustomUser, CustomUserAdmin)

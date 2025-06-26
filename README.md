@@ -8,7 +8,6 @@ A Django REST Framework backend for the P2P Kilo Sales platform, connecting trav
 - Profile Management with Identity Verification
 - Travel Listings
 - Package Requests
-- Booking System
 - Messaging System
 - Admin Dashboard
 

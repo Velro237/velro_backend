@@ -60,7 +60,6 @@ INSTALLED_APPS = [
     'corsheaders',
     'users',
     'listings',
-    'bookings',
     'messaging',
 ]
 SITE_ID = 1

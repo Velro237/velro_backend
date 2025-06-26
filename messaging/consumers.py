@@ -2,6 +2,8 @@ import json
 from channels.generic.websocket import AsyncWebsocketConsumer
 from channels.db import database_sync_to_async
 from django.contrib.auth import get_user_model
+from django.core.files.base import ContentFile
+import base64
 
 User = get_user_model()
 
@@ -9,8 +11,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
     async def connect(self):
         self.conversation_id = self.scope['url_route']['kwargs']['conversation_id']
         self.room_group_name = f'chat_{self.conversation_id}'
-
-        print("jjjjjjjjjjjjjjjjjjjjjjjjjjjjjjj")
+        print("Connected now 11111111111111111111111111")
         # Join room group
         await self.channel_layer.group_add(
             self.room_group_name,
@@ -21,7 +22,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
     async def disconnect(self, close_code):
         # Leave room group
-        print("kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk")
+        print("Disconnected now 222222222222222222222222222")
         await self.channel_layer.group_discard(
             self.room_group_name,
             self.channel_name
@@ -34,23 +35,16 @@ class ChatConsumer(AsyncWebsocketConsumer):
             print(message_type)
             if message_type == 'message':
                 content = text_data_json.get('content')
-                # Save message to database
-                message = await self.save_message(content)
+                attachments = text_data_json.get('attachments', [])
+
+                # Save message to database and get serializable dict
+                message_data = await self.save_message(content, attachments)
                 # Send message to room group
                 await self.channel_layer.group_send(
                     self.room_group_name,
                     {
                         'type': 'chat_message',
-                        'message': {
-                            'id': message.id,
-                            'content': message.content,
-                            'sender': {
-                                'id': message.sender.id,
-                                'username': message.sender.username,
-                                'email': message.sender.email
-                            },
-                            'created_at': message.created_at.isoformat(),
-                        }
+                        'message': message_data
                     }
                 )
             elif message_type == 'typing':
@@ -92,9 +86,9 @@ class ChatConsumer(AsyncWebsocketConsumer):
         }))
 
     @database_sync_to_async
-    def save_message(self, content):
+    def save_message(self, content, attachments):
         # Import models here to avoid circular imports
-        from .models import Conversation, Message
+        from .models import Conversation, Message, MessageAttachment
         
         conversation = Conversation.objects.get(id=self.conversation_id)
         message = Message.objects.create(
@@ -102,4 +96,71 @@ class ChatConsumer(AsyncWebsocketConsumer):
             sender=self.scope['user'],
             content=content
         )
-        return message 
+        print("========================================")
+        print(attachments)
+        print("========================================")
+        # Handle attachments
+        for attachment in attachments:
+            file_data = base64.b64decode(attachment['data'])
+            file_name = attachment['name']
+            file_type = attachment['type']
+            print("+++++++++++++++++++++++++++++++++++++")
+            print(file_data)
+            print(file_name)
+            print(file_type)
+            print("++++++++++++++++++++++++++++++++++++++")
+            MessageAttachment.objects.create(
+                message=message,
+                file=ContentFile(file_data, name=file_name),
+                file_name=file_name,
+                file_type=file_type
+            )
+
+        # Prepare serializable message dict
+        result = {
+            'id': message.id,
+            'content': message.content,
+            'sender': {
+                'id': message.sender.id,
+                'username': message.sender.username,
+                'email': message.sender.email
+            },
+            'created_at': message.created_at.isoformat(),
+            'attachments': [
+                {
+                    'id': att.id,
+                    'file_name': att.file_name,
+                    'file_type': att.file_type,
+                    'file_url': att.file.url
+                }
+                for att in message.attachments.all()
+            ]
+        } 
+
+        print("Returning message dict:", result)
+        return result
+
+class NotificationConsumer(AsyncWebsocketConsumer):
+    async def connect(self):
+        self.user = self.scope['user']
+        if not self.user.is_authenticated:
+            await self.close()
+            return
+        self.room_group_name = f'notifications_{self.user.id}'
+        await self.channel_layer.group_add(
+            self.room_group_name,
+            self.channel_name
+        )
+        await self.accept()
+
+    async def disconnect(self, close_code):
+        await self.channel_layer.group_discard(
+            self.room_group_name,
+            self.channel_name
+        )
+
+    async def user_notification(self, event):
+        await self.send(text_data=json.dumps({
+            'type': 'notification',
+            'notification': event['notification']
+        }))

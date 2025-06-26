@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import TravelListing, PackageRequest, Alert, Country, Region, ListingImage
+from .models import TravelListing, PackageRequest, Alert, Country, Region, ListingImage, PackageType, TransportType
 
 class ListingImageInline(admin.TabularInline):
     model = ListingImage
@@ -46,7 +46,7 @@ class ListingImageAdmin(admin.ModelAdmin):
 
 @admin.register(Country)
 class CountryAdmin(admin.ModelAdmin):
-    list_display = ('name', 'code', 'created_at', 'updated_at')
+    list_display = ('name', 'code', 'is_popular', 'created_at', 'updated_at')
     search_fields = ('name', 'code')
     ordering = ('name',)
     readonly_fields = ('created_at', 'updated_at')
@@ -58,3 +58,6 @@ class RegionAdmin(admin.ModelAdmin):
     search_fields = ('name', 'country__name')
     ordering = ('country', 'name')
     readonly_fields = ('created_at', 'updated_at')
+
+admin.site.register(PackageType)
+admin.site.register(TransportType)

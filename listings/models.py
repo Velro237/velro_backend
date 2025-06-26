@@ -2,6 +2,16 @@ from django.db import models
 from django.utils.translation import gettext_lazy as _
 from users.models import CustomUser
 from django.conf import settings
+from django.core.validators import MinValueValidator, MaxValueValidator
+
+class TransportType(models.Model):
+    name = models.CharField(max_length=50, unique=True)
+    description = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return self.name
 
 class TravelListing(models.Model):
     STATUS_CHOICES = [
@@ -11,17 +21,6 @@ class TravelListing(models.Model):
         ('canceled', 'Canceled'),
     ]
 
-    TRANSPORT_CHOICES = [
-        ('plane', 'Plane'),
-        ('bus', 'Bus'),
-        ('train', 'Train'),
-        ('ship', 'Ship'),
-        ('car', 'Car'),
-        ('motorcycle', 'Motorcycle'),
-        ('bicycle', 'Bicycle'),
-        ('other', 'Other'),
-    ]
-
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
     pickup_country = models.ForeignKey('Country', on_delete=models.PROTECT, related_name='pickup_listings')
     pickup_region = models.ForeignKey('Region', on_delete=models.PROTECT, related_name='pickup_listings')
@@ -29,7 +28,7 @@ class TravelListing(models.Model):
     destination_region = models.ForeignKey('Region', on_delete=models.PROTECT, related_name='destination_listings')
     travel_date = models.DateField()
     travel_time = models.TimeField()
-    mode_of_transport = models.CharField(max_length=20, choices=TRANSPORT_CHOICES)
+    mode_of_transport = models.ForeignKey(TransportType, on_delete=models.PROTECT)
     maximum_weight_in_kg = models.DecimalField(max_digits=5, decimal_places=2)
     notes = models.TextField(blank=True)
     price_per_kg = models.DecimalField(max_digits=10, decimal_places=2)
@@ -38,12 +37,23 @@ class TravelListing(models.Model):
     price_per_tablet = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     price_per_pc = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     price_per_file = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    price_full_suitcase = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    currency = models.CharField(max_length=10, default='USD')
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='published')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
         return f"{self.pickup_country.name} to {self.destination_country.name} - {self.travel_date}"
+
+class PackageType(models.Model):
+    name = models.CharField(max_length=50, unique=True)
+    description = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return self.name
 
 class PackageRequest(models.Model):
     STATUS_CHOICES = [
@@ -53,26 +63,20 @@ class PackageRequest(models.Model):
         ('completed', 'Completed'),
     ]
 
-    PACKAGE_TYPE_CHOICES = [
-        ('DOCUMENT', 'Document'),                     # Papers, certificates, ID cards
-        ('SMALL_PARCEL', 'Small Parcel'),             # Phones, books, accessories
-        ('MEDIUM_PARCEL', 'Medium Parcel'),           # Clothing, shoes, electronics
-        ('LARGE_PARCEL', 'Large Parcel'),             # Luggage-sized, boxed items
-        ('FRAGILE_ITEM', 'Fragile Item'),             # Glass, electronics
-        ('PERISHABLE_ITEM', 'Perishable Item'),       # Food, plants
-        ('MEDICINE', 'Medicine/Pharmaceutical'),      # Needs traveler approval
-        ('VALUABLE_ITEM', 'Valuable Item'),           # Laptops, jewelry
-        ('OTHER', 'Other (Specify in description)'),  # For edge cases
-    ]
-
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
-    travel_listing = models.ForeignKey(TravelListing, on_delete=models.CASCADE)
-    package_description = models.TextField()
-    weight = models.DecimalField(max_digits=5, decimal_places=2)
-    pickup_address = models.TextField()
-    receiver_address = models.TextField()
-    receiver_phone_number = models.CharField(max_length=20)
-    package_type = models.CharField(max_length=20, choices=PACKAGE_TYPE_CHOICES)
+    travel_listing = models.ForeignKey(TravelListing, on_delete=models.CASCADE, related_name='package_requests')
+    package_description = models.TextField(blank=True)
+    weight = models.DecimalField(max_digits=5, decimal_places=2, default=0.00, help_text="Weight in KG for items not counted by unit.")
+    
+    number_of_document = models.PositiveIntegerField(default=0)
+    number_of_phone = models.PositiveIntegerField(default=0)
+    number_of_tablet = models.PositiveIntegerField(default=0)
+    number_of_pc = models.PositiveIntegerField(default=0)
+    number_of_full_suitcase = models.PositiveIntegerField(default=0)
+
+    package_types = models.ManyToManyField(PackageType, blank=True)
+    total_price = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True, editable=False)
+
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -97,17 +101,21 @@ class ListingImage(models.Model):
 
 class Alert(models.Model):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
-    pickup_country = models.CharField(max_length=100)
-    pickup_region = models.CharField(max_length=100)
-    destination_country = models.CharField(max_length=100)
-    destination_region = models.CharField(max_length=100)
-    travel_date = models.DateField()
+    pickup_country = models.ForeignKey('Country', on_delete=models.CASCADE, related_name='pickup_alerts')
+    pickup_region = models.ForeignKey('Region', on_delete=models.CASCADE, related_name='pickup_alerts')
+    destination_country = models.ForeignKey('Country', on_delete=models.CASCADE, related_name='destination_alerts')
+    destination_region = models.ForeignKey('Region', on_delete=models.CASCADE, related_name='destination_alerts')
+    from_travel_date = models.DateField()
+    to_travel_date = models.DateField(null=True, blank=True)
+    notify_for_any_pickup_city = models.BooleanField(default=False)
+    notify_for_any_destination_city = models.BooleanField(default=False)
+    notify_me = models.BooleanField(default=False)
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
-        return f"Alert: {self.pickup_country} to {self.destination_country} - {self.travel_date}"
+        return f"Alert: {self.pickup_country} to {self.destination_country} - {self.from_travel_date} to {self.to_travel_date}"
 
     class Meta:
         ordering = ['-created_at']
@@ -115,6 +123,7 @@ class Alert(models.Model):
 class Country(models.Model):
     name = models.CharField(max_length=100, unique=True)
     code = models.CharField(max_length=3, unique=True)
+    is_popular = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -137,3 +146,18 @@ class Region(models.Model):
     class Meta:
         unique_together = ['name', 'country']
         ordering = ['country', 'name']
+
+class Review(models.Model):
+    travel_listing = models.ForeignKey('TravelListing', on_delete=models.CASCADE, related_name='reviews')
+    package_request = models.ForeignKey('PackageRequest', on_delete=models.CASCADE, related_name='reviews')
+    reviewer = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='reviews')
+    rate = models.PositiveSmallIntegerField(validators=[MinValueValidator(1), MaxValueValidator(5)])
+    description = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ('travel_listing', 'reviewer')
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"Review by {self.reviewer} for {self.travel_listing} ({self.rate})"

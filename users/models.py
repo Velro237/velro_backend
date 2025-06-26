@@ -30,19 +30,36 @@ class CustomUserManager(BaseUserManager):
 
         return self.create_user(email, password, **extra_fields)
 
+class IdType(models.Model):
+    name = models.CharField(max_length=50, unique=True)
+    description = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return self.name
+IDENTITY_VERIFICATION_CHOICES = [
+    ('pending', 'Pending'),
+    ('rejected', 'Rejected'),
+    ('completed', 'Completed'),
+]
+
 class CustomUser(BaseUser):
     email = models.EmailField(unique=True)
-    phone_number = models.CharField(max_length=15)
+    phone_number = models.CharField(max_length=15, unique=True)
     is_email_verified = models.BooleanField(default=False)
     is_phone_verified = models.BooleanField(default=False)
     google_id = models.CharField(max_length=255, blank=True, null=True, unique=True)
     apple_id = models.CharField(max_length=255, blank=True, null=True, unique=True)
-    is_identity_verified = models.BooleanField(default=False)
+    is_identity_verified = models.CharField(
+        max_length=10,
+        choices=IDENTITY_VERIFICATION_CHOICES,
+        default='pending',
+    )
     is_profile_completed = models.BooleanField(default=False)
     is_facebook_verified = models.BooleanField(default=False)
     privacy_policy_accepted = models.BooleanField(default=False)
     date_privacy_accepted = models.DateTimeField(null=True, blank=True)
-
     objects = CustomUserManager()
 
     USERNAME_FIELD = 'email'
@@ -58,10 +75,13 @@ class Profile(models.Model):
     languages = models.CharField(max_length=255, blank=True)
     travel_history = models.TextField(blank=True)
     preferences = models.TextField(blank=True)
-    identity_card = models.ImageField(upload_to='identity_cards/', blank=True, null=True)
     selfie_photo = models.ImageField(upload_to='selfies/', blank=True, null=True)
-    phone_number = models.CharField(max_length=15, blank=True, null=True)
     address = models.TextField(blank=True, null=True)
+    city_of_residence = models.ForeignKey("listings.Region", on_delete=models.SET_NULL, null=True, blank=True, related_name='residents')
+    id_type = models.ForeignKey(IdType, on_delete=models.SET_NULL, null=True, blank=True)
+    issue_country = models.ForeignKey("listings.Country", on_delete=models.SET_NULL, null=True, blank=True)
+    front_side_identity_card = models.ImageField(upload_to='identity_cards/', null=True, blank=True)
+    back_side_identity_card = models.ImageField(upload_to='identity_cards/', null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

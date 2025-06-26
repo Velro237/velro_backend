@@ -19,3 +19,5 @@ db.sqlite3-wal
 
 index.html
 staticfiles/
+media
+home.html

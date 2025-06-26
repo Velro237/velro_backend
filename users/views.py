@@ -13,7 +13,7 @@ from .serializers import (
     UserRegistrationSerializer, UserProfileSerializer, ProfileSerializer,
     OTPSerializer, PasswordChangeSerializer, PrivacyPolicyAcceptanceSerializer,
     UserSerializer, OTPVerificationSerializer, ResendOTPSerializer, ForgotPasswordSerializer,
-    ResetPasswordSerializer
+    ResetPasswordSerializer, SetPasswordSerializer
 )
 from .utils import send_verification_email
 import random
@@ -169,12 +169,9 @@ class UserViewSet(StandardResponseViewSet):
         serializer = UserRegistrationSerializer(data=request.data)
         if serializer.is_valid():
             user = serializer.save()
-            # Generate and send OTP for email verification
             otp = ''.join(random.choices(string.digits, k=6))
             OTP.objects.create(user=user, code=otp, purpose='email_verification')
-            
             try:
-                # Send verification email
                 send_verification_email(user, otp)
                 return standard_response(
                     data={
@@ -184,7 +181,6 @@ class UserViewSet(StandardResponseViewSet):
                     status_code=status.HTTP_201_CREATED
                 )
             except Exception as e:
-                # If email sending fails, still return success but with a warning
                 return standard_response(
                     data={
                         'message': 'Registration successful but email verification failed. Please try resending OTP.',
@@ -618,6 +614,147 @@ class UserViewSet(StandardResponseViewSet):
                 error=[f'An error occurred: {str(e)}']
             )
 
+    @action(detail=False, methods=['post'], permission_classes=[AllowAny])
+    def set_password(self, request):
+        serializer = SetPasswordSerializer(data=request.data)
+        if not serializer.is_valid():
+            return standard_response(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                error=[f"{field}: {error[0]}" for field, error in serializer.errors.items()]
+            )
+        user_id = serializer.validated_data['user_id']
+        password = serializer.validated_data['password']
+        try:
+            user = User.objects.get(id=user_id)
+        except User.DoesNotExist:
+            return standard_response(
+                status_code=status.HTTP_404_NOT_FOUND,
+                error=['User not found']
+            )
+
+        # Check if email is verified
+        if not user.is_email_verified:
+            return standard_response(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                error=['Email is not verified.']
+            )
+
+        # Check if password has already been set
+        if user.has_usable_password():
+            return standard_response(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                error=['Password has already been set. Use the password reset flow to change your password.']
+            )
+
+        user.set_password(password)
+        user.save()
+        return standard_response(
+            data={'message': 'Password set successfully. You can now log in.'},
+            status_code=status.HTTP_200_OK
+        )
+
+    @action(detail=False, methods=['post'], permission_classes=[AllowAny])
+    def register_google(self, request):
+        """
+        Secure Google registration. Requires id_token, username, phone_number.
+        Verifies id_token, extracts Google profile info, and creates user with verified email.
+        """
+        id_token_str = request.data.get('id_token')
+        username = request.data.get('username')
+        phone_number = request.data.get('phone_number')
+
+        if not all([id_token_str, username, phone_number]):
+            return standard_response(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                error=['id_token, username, and phone_number are required']
+            )
+
+        # Verify the Google id_token
+        try:
+            idinfo = id_token.verify_oauth2_token(
+                id_token_str,
+                google_requests.Request(),
+                settings.GOOGLE_CLIENT_ID
+            )
+            email = idinfo['email']
+            first_name = idinfo.get('given_name', '')
+            last_name = idinfo.get('family_name', '')
+        except ValueError as e:
+            return standard_response(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                error=[f'Invalid token: {str(e)}']
+            )
+
+        # Check if email or username already exists
+        if CustomUser.objects.filter(email=email).exists():
+            return standard_response(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                error=["A user with this email already exists."]
+            )
+        if CustomUser.objects.filter(username=username).exists():
+            return standard_response(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                error=["A user with this username already exists."]
+            )
+
+        user = CustomUser.objects.create(
+            first_name=first_name,
+            last_name=last_name,
+            email=email,
+            username=username,
+            phone_number=phone_number,
+            is_email_verified=True
+        )
+        # Do NOT set password here. User will set password later using set_password endpoint.
+
+        return standard_response(
+            data={
+                'message': 'Registration successful. Please set your password using the set_password endpoint.',
+                'user': UserSerializer(user).data
+            },
+            status_code=status.HTTP_201_CREATED
+        )
+
+    @action(detail=False, methods=['post'], permission_classes=[AllowAny])
+    def google_profile_info(self, request):
+        """
+        Accepts a Google id_token, verifies it, and returns first_name, last_name, and email.
+        Does not create a user.
+        """
+        id_token_str = request.data.get('id_token')
+        if not id_token_str:
+            return standard_response(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                error=['Google id_token is required']
+            )
+        try:
+            idinfo = id_token.verify_oauth2_token(
+                id_token_str,
+                google_requests.Request(),
+                settings.GOOGLE_CLIENT_ID
+            )
+            email = idinfo['email']
+            first_name = idinfo.get('given_name', '')
+            last_name = idinfo.get('family_name', '')
+            return standard_response(
+                data={
+                    'first_name': first_name,
+                    'last_name': last_name,
+                    'email': email
+                },
+                status_code=status.HTTP_200_OK
+            )
+        except ValueError as e:
+            return standard_response(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                error=[f'Invalid token: {str(e)}']
+            )
+        except Exception as e:
+            return standard_response(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                error=[f'An error occurred: {str(e)}']
+            )
+
 class ProfileViewSet(StandardResponseViewSet):
     """
     API endpoint for user profiles
@@ -744,6 +881,8 @@ class GoogleSignInView(APIView):
 
         try:
             # Verify the token
+            print(settings.GOOGLE_CLIENT_ID)
+            print(token)
             idinfo = id_token.verify_oauth2_token(
                 token, 
                 google_requests.Request(), 

@@ -4,11 +4,15 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from django.db.models import Q
 from datetime import datetime
-from .models import TravelListing, PackageRequest, Alert, Country, Region
-from .serializers import TravelListingSerializer, PackageRequestSerializer, AlertSerializer, CountrySerializer, RegionSerializer
+from .models import TravelListing, PackageRequest, Alert, Country, Region, Review
+from .serializers import TravelListingSerializer, PackageRequestSerializer, AlertSerializer, CountrySerializer, RegionSerializer, ReviewSerializer
 from config.views import StandardResponseViewSet
 from rest_framework.permissions import IsAuthenticated, IsAdminUser, AllowAny
 from rest_framework import status
+from messaging.models import Conversation, Message
+from decimal import Decimal
+from asgiref.sync import async_to_sync
+from channels.layers import get_channel_layer
 
 # Create your views here.
 
@@ -43,13 +47,25 @@ class IsPackageRequestOwnerOrTravelListingOwner(permissions.BasePermission):
         # For other write operations, only allow package request owner
         return obj.user == request.user
 
+class IsIdentityVerified(permissions.BasePermission):
+    """
+    Custom permission to only allow identity verified users to create travel listings.
+    """
+    def has_permission(self, request, view):
+        # Allow read operations for any authenticated user
+        if request.method in permissions.SAFE_METHODS:
+            return True
+            
+        # For write operations, check if user is verified
+        return request.user.is_authenticated and request.user.is_identity_verified == 'completed'
+
 class TravelListingViewSet(StandardResponseViewSet):
     """
     API endpoint for travel listings
     """
     queryset = TravelListing.objects.all()
     serializer_class = TravelListingSerializer
-    permission_classes = [permissions.IsAuthenticated, IsOwnerOrReadOnly]
+    permission_classes = [permissions.IsAuthenticated, IsOwnerOrReadOnly, IsIdentityVerified]
 
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)
@@ -59,12 +75,16 @@ class TravelListingViewSet(StandardResponseViewSet):
         This view returns a list of travel listings with the following visibility rules:
         - Published listings are visible to all authenticated users
         - Drafted, completed, and canceled listings are only visible to their owners
-        Can be filtered by pickup location, destination, date, and status.
+        Can be filtered by pickup location, destination, date (from and above), and status.
+        Query params:
+        - pickup_country: ID of the pickup country
+        - pickup_region: ID of the pickup region
+        - destination_country: ID of the destination country
+        - destination_region: ID of the destination region
+        - travel_date: listings with travel_date >= this date (YYYY-MM-DD)
+        - status: filter by status
         """
-        # Start with all listings
         queryset = TravelListing.objects.all()
-        
-        # Get query parameters
         pickup_country = self.request.query_params.get('pickup_country', None)
         pickup_region = self.request.query_params.get('pickup_region', None)
         destination_country = self.request.query_params.get('destination_country', None)
@@ -74,33 +94,29 @@ class TravelListingViewSet(StandardResponseViewSet):
 
         # Apply visibility rules
         if status:
-            # If status is specified, only show if user is owner or status is published
             queryset = queryset.filter(
                 Q(user=self.request.user, status=status)
             )
         else:
-            # If no status specified, show all published listings and user's own non-published listings
             queryset = queryset.filter(
-                Q(status='published') | 
+                Q(status='published') |
                 Q(user=self.request.user, status__in=['drafted', 'completed', 'canceled'])
             )
 
-        # Apply additional filters
+        # Apply additional filters using IDs
         if pickup_country:
-            queryset = queryset.filter(pickup_country__icontains=pickup_country)
+            queryset = queryset.filter(pickup_country_id=pickup_country)
         if pickup_region:
-            queryset = queryset.filter(pickup_region__icontains=pickup_region)
+            queryset = queryset.filter(pickup_region_id=pickup_region)
         if destination_country:
-            queryset = queryset.filter(destination_country__icontains=destination_country)
+            queryset = queryset.filter(destination_country_id=destination_country)
         if destination_region:
-            queryset = queryset.filter(destination_region__icontains=destination_region)
+            queryset = queryset.filter(destination_region_id=destination_region)
         if travel_date:
             try:
-                # Convert string date to datetime object
                 date_obj = datetime.strptime(travel_date, '%Y-%m-%d').date()
-                queryset = queryset.filter(travel_date=date_obj)
+                queryset = queryset.filter(travel_date__gte=date_obj)
             except ValueError:
-                # If date format is invalid, return empty queryset
                 return TravelListing.objects.none()
 
         return queryset
@@ -281,6 +297,99 @@ class PackageRequestViewSet(StandardResponseViewSet):
         serializer = self.get_serializer(package_request)
         return self._standardize_response(Response(serializer.data))
 
+    @action(detail=True, methods=['post'], url_path='send-request-message')
+    def send_request_in_message(self, request, pk=None):
+        """
+        Sends the package request details as a message to the traveler.
+        Creates a new conversation if one does not already exist.
+        Also sends the message in real time via Django Channels.
+        """
+        package_request = self.get_object()
+
+        # 1. Permission Check: Only the request owner can send the message.
+        if request.user != package_request.user:
+            return self._standardize_response(
+                Response(
+                    {"error": "You do not have permission to perform this action."},
+                    status=status.HTTP_403_FORBIDDEN
+                ),
+                status_code=status.HTTP_403_FORBIDDEN
+            )
+
+        travel_listing = package_request.travel_listing
+        traveler = travel_listing.user
+
+        # 2. Get or create the conversation.
+        conversation, created = Conversation.objects.get_or_create(
+            package_request=package_request,
+            defaults={'travel_listing': travel_listing}
+        )
+        if created:
+            conversation.participants.set([request.user, traveler])
+
+        # 3. Format the message content.
+        message_lines = ["Hi! I'd like to send the following items:"]
+        items = {
+            'phone': package_request.number_of_phone,
+            'PC': package_request.number_of_pc,
+            'tablet': package_request.number_of_tablet,
+            'document': package_request.number_of_document,
+            'full suitcase': package_request.number_of_full_suitcase
+        }
+
+        has_items = False
+        for item, count in items.items():
+            if count > 0:
+                has_items = True
+                plural = 's' if count > 1 and 'suitcase' not in item else ''
+                message_lines.append(f"- {count} x {item}{plural}")
+
+        if package_request.weight and Decimal(package_request.weight) > 0:
+            has_items = True
+            message_lines.append(f"- {package_request.weight}kg of other items ({package_request.package_description or 'not specified'}).")
+        
+        if not has_items:
+            return self._standardize_response(
+                Response(
+                    {"error": "Cannot send an empty request. Please specify items or weight."},
+                    status=status.HTTP_400_BAD_REQUEST
+                ),
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
+
+        message_lines.append(f"\nTotal price: {package_request.total_price} {travel_listing.currency}")
+        message_content = "\n".join(message_lines)
+
+        # 4. Create and send the message (DB).
+        message = Message.objects.create(
+            conversation=conversation,
+            sender=request.user,
+            content=message_content
+        )
+
+        # 5. Send the message in real time via Channels.
+        channel_layer = get_channel_layer()
+        message_dict = {
+            'id': message.id,
+            'content': message.content,
+            'sender': {
+                'id': message.sender.id,
+                'username': message.sender.username,
+                'email': message.sender.email
+            },
+            'created_at': message.created_at.isoformat(),
+            'attachments': []
+        }
+        async_to_sync(channel_layer.group_send)(
+            f'chat_{conversation.id}',
+            {
+                'type': 'chat_message',
+                'message': message_dict
+            }
+        )
+
+        return self._standardize_response(Response({"detail": "Request message sent successfully."}))
+
 class AlertViewSet(StandardResponseViewSet):
     """
     API endpoint for travel alerts
@@ -289,10 +398,32 @@ class AlertViewSet(StandardResponseViewSet):
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        """
-        This view returns a list of all alerts for the authenticated user.
-        """
-        return Alert.objects.filter(user=self.request.user)
+        queryset = Alert.objects.all()
+        pickup_country = self.request.query_params.get('pickup_country')
+        pickup_region = self.request.query_params.get('pickup_region')
+        destination_country = self.request.query_params.get('destination_country')
+        destination_region = self.request.query_params.get('destination_region')
+        from_travel_date = self.request.query_params.get('from_travel_date')
+        to_travel_date = self.request.query_params.get('to_travel_date')
+        notify_for_any_pickup_city = self.request.query_params.get('notify_for_any_pickup_city')
+        notify_for_any_destination_city = self.request.query_params.get('notify_for_any_destination_city')
+        if pickup_country:
+            queryset = queryset.filter(pickup_country_id=pickup_country)
+        if pickup_region:
+            queryset = queryset.filter(pickup_region_id=pickup_region)
+        if destination_country:
+            queryset = queryset.filter(destination_country_id=destination_country)
+        if destination_region:
+            queryset = queryset.filter(destination_region_id=destination_region)
+        if from_travel_date:
+            queryset = queryset.filter(from_travel_date__gte=from_travel_date)
+        if to_travel_date:
+            queryset = queryset.filter(to_travel_date__lte=to_travel_date)
+        if notify_for_any_pickup_city is not None:
+            queryset = queryset.filter(notify_for_any_pickup_city=notify_for_any_pickup_city.lower() in ['true', '1'])
+        if notify_for_any_destination_city is not None:
+            queryset = queryset.filter(notify_for_any_destination_city=notify_for_any_destination_city.lower() in ['true', '1'])
+        return queryset
 
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)
@@ -376,3 +507,33 @@ class RegionViewSet(StandardResponseViewSet):
                     status=status.HTTP_404_NOT_FOUND
                 )
             )
+
+class ReviewViewSet(StandardResponseViewSet):
+    queryset = Review.objects.all()
+    serializer_class = ReviewSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_permissions(self):
+        # Only the reviewer can create, update, partial_update, or delete
+        if self.action in ['update', 'partial_update', 'destroy']:
+            return [IsAuthenticated(), IsReviewerOnly()]
+        return [IsAuthenticated()]
+
+    def perform_create(self, serializer):
+        serializer.save(reviewer=self.request.user)
+
+    @action(detail=False, methods=['get'], url_path='by-travel-listing-owner/(?P<owner_id>[^/.]+)')
+    def by_travel_listing_owner(self, request, owner_id=None):
+        reviews = Review.objects.filter(travel_listing__user_id=owner_id)
+        serializer = self.get_serializer(reviews, many=True)
+        return self._standardize_response(Response(serializer.data))
+
+    @action(detail=False, methods=['get'], url_path='by-package-request-owner/(?P<owner_id>[^/.]+)')
+    def by_package_request_owner(self, request, owner_id=None):
+        reviews = Review.objects.filter(package_request__user_id=owner_id)
+        serializer = self.get_serializer(reviews, many=True)
+        return self._standardize_response(Response(serializer.data))
+
+class IsReviewerOnly(IsAuthenticated):
+    def has_object_permission(self, request, view, obj):
+        return obj.reviewer == request.user

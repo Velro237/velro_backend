@@ -2,6 +2,9 @@ from rest_framework import serializers
 from django.contrib.auth import get_user_model
 from .models import Profile, OTP
 from django.utils import timezone
+from listings.models import Region, Country
+from listings.serializers import RegionSerializer, CountrySerializer
+from .models import IdType
 
 User = get_user_model()
 
@@ -15,39 +18,65 @@ class UserSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'date_joined']
 
 class UserRegistrationSerializer(serializers.ModelSerializer):
-    password = serializers.CharField(write_only=True)
-    confirm_password = serializers.CharField(write_only=True)
-
     class Meta:
         model = User
-        fields = ('email', 'username', 'first_name', 'last_name', 'phone_number', 'password', 'confirm_password')
+        fields = ('email', 'username', 'first_name', 'last_name', 'phone_number')
+
+    def validate_email(self, value):
+        if User.objects.filter(email=value).exists():
+            raise serializers.ValidationError("A user with this email already exists.")
+        return value
+
+    def validate_username(self, value):
+        if User.objects.filter(username=value).exists():
+            raise serializers.ValidationError("A user with this username already exists.")
+        return value
 
     def validate_phone_number(self, value):
-        # Remove any spaces, dashes, or parentheses
         phone = ''.join(filter(str.isdigit, value))
-        
-        # Check if the phone number has a valid length (adjust these rules as needed)
         if len(phone) < 10 or len(phone) > 15:
             raise serializers.ValidationError("Phone number must be between 10 and 15 digits")
-        
+        if User.objects.filter(phone_number=phone).exists():
+            raise serializers.ValidationError("A user with this phone number already exists.")
         return phone
 
-    def validate(self, data):
-        if data['password'] != data['confirm_password']:
-            raise serializers.ValidationError("Passwords don't match")
-        return data
-
     def create(self, validated_data):
-        validated_data.pop('confirm_password')
-        user = User.objects.create_user(**validated_data)
+        user = User.objects.create(
+            email=validated_data['email'],
+            username=validated_data['username'],
+            first_name=validated_data['first_name'],
+            last_name=validated_data['last_name'],
+            phone_number=validated_data['phone_number']
+        )
+        user.set_unusable_password()
+        user.save()
         return user
 
+class IdTypeSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = IdType
+        fields = ['id', 'name', 'description']
+
 class ProfileSerializer(serializers.ModelSerializer):
+    city_of_residence = RegionSerializer(read_only=True)
+    city_of_residence_id = serializers.PrimaryKeyRelatedField(queryset=Region.objects.all(), source='city_of_residence', write_only=True, required=False)
+    id_type = IdTypeSerializer(read_only=True)
+    id_type_id = serializers.PrimaryKeyRelatedField(queryset=IdType.objects.all(), source='id_type', write_only=True, required=False)
+    issue_country = CountrySerializer(read_only=True)
+    issue_country_id = serializers.PrimaryKeyRelatedField(queryset=Country.objects.all(), source='issue_country', write_only=True, required=False)
+
     class Meta:
         model = Profile
-        fields = ('profile_picture', 'contact_info', 'languages', 'travel_history', 
-                 'preferences', 'identity_card', 'selfie_photo')
-        read_only_fields = ('created_at', 'updated_at')
+        fields = (
+            'profile_picture', 'contact_info', 'languages', 'travel_history', 
+            'preferences', 'selfie_photo', 'address',
+            'city_of_residence', 'city_of_residence_id',
+            'id_type', 'id_type_id',
+            'issue_country', 'issue_country_id',
+            'front_side_identity_card', 'back_side_identity_card',
+            'created_at', 'updated_at'
+        )
+        read_only_fields = ('created_at', 'updated_at', 'city_of_residence', 'id_type', 'issue_country')
 
 class UserProfileSerializer(serializers.ModelSerializer):
     profile = ProfileSerializer(required=False)
@@ -192,5 +221,15 @@ class ResetPasswordSerializer(serializers.Serializer):
 
     def validate(self, data):
         if data['new_password'] != data['confirm_password']:
+            raise serializers.ValidationError({"confirm_password": "Passwords don't match"})
+        return data
+
+class SetPasswordSerializer(serializers.Serializer):
+    user_id = serializers.IntegerField(required=True)
+    password = serializers.CharField(write_only=True, min_length=8)
+    confirm_password = serializers.CharField(write_only=True, min_length=8)
+
+    def validate(self, data):
+        if data['password'] != data['confirm_password']:
             raise serializers.ValidationError({"confirm_password": "Passwords don't match"})
         return data 
