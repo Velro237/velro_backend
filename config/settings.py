@@ -247,11 +247,12 @@ SIMPLE_JWT = {
 }
 
 # Channel Layers Configuration
+REDIS_HOSTS = [os.getenv("REDIS_URL")] if not DEBUG else [("redis", 6379), ("localhost", 6379)]
 CHANNEL_LAYERS = {
     "default": {
         "BACKEND": "channels_redis.core.RedisChannelLayer",
         "CONFIG": {
-            "hosts": [("redis", 6379)],
+            "hosts": REDIS_HOSTS,
         },
     },
 }
