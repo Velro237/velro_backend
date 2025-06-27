@@ -1,6 +1,7 @@
 from rest_framework import serializers
 from .models import TravelListing, PackageRequest, Alert, Country, Region, TransportType, PackageType, Review
 from decimal import Decimal
+from django.db import models
 
 class CountrySerializer(serializers.ModelSerializer):
     class Meta:
@@ -104,6 +105,7 @@ class PackageRequestSerializer(serializers.ModelSerializer):
         """
         Ensure the travel listing is published and the user is not the owner.
         Also check that package_description is provided if weight is greater than 0.
+        Also check that requested weight does not exceed available weight and travel has not started.
         """
         weight = data.get('weight', getattr(self.instance, 'weight', Decimal('0.0')))
         description = data.get('package_description', getattr(self.instance, 'package_description', ''))
@@ -123,6 +125,25 @@ class PackageRequestSerializer(serializers.ModelSerializer):
             if request and travel_listing.user == request.user:
                 raise serializers.ValidationError({
                     "travel_listing": "You cannot create a package request for your own travel listing."
+                })
+            # Check travel has not started
+            from datetime import datetime, time
+            now = datetime.now()
+            travel_datetime = datetime.combine(travel_listing.travel_date, travel_listing.travel_time)
+            if travel_datetime <= now:
+                raise serializers.ValidationError({
+                    "travel_listing": "You cannot create a package request for a travel that has already started."
+                })
+            # Check available weight
+            # Sum accepted package weights for this travel listing
+            from listings.models import PackageRequest
+            accepted_weight = PackageRequest.objects.filter(
+                travel_listing=travel_listing, status='accepted'
+            ).aggregate(models.Sum('weight'))['weight__sum'] or Decimal('0.0')
+            available_weight = travel_listing.maximum_weight_in_kg - accepted_weight
+            if Decimal(weight) > available_weight:
+                raise serializers.ValidationError({
+                    "weight": f"Requested weight ({weight}kg) exceeds available capacity ({available_weight}kg)."
                 })
         return data
 

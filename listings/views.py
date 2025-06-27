@@ -9,10 +9,12 @@ from .serializers import TravelListingSerializer, PackageRequestSerializer, Aler
 from config.views import StandardResponseViewSet
 from rest_framework.permissions import IsAuthenticated, IsAdminUser, AllowAny
 from rest_framework import status
-from messaging.models import Conversation, Message
+from messaging.models import Conversation, Message, Notification
 from decimal import Decimal
 from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
+from messaging.serializers import NotificationSerializer
+from messaging.utils import send_notification_to_user
 
 # Create your views here.
 
@@ -222,7 +224,22 @@ class PackageRequestViewSet(StandardResponseViewSet):
 
         package_request.status = 'accepted'
         package_request.save()
+        # Update travel listing's available weight and status
+        travel_listing = package_request.travel_listing
+        travel_listing.maximum_weight_in_kg = Decimal(travel_listing.maximum_weight_in_kg) - Decimal(package_request.weight)
+        if travel_listing.maximum_weight_in_kg <= 0:
+            travel_listing.maximum_weight_in_kg = 0
+            travel_listing.status = 'fully-booked'
+        travel_listing.save()
         serializer = self.get_serializer(package_request)
+        # Send notification to package request owner
+        notification = Notification.objects.create(
+            user=package_request.user,
+            travel_listing=package_request.travel_listing,
+            message=f"Your package request has been accepted."
+        )
+        notification_serializer = NotificationSerializer(notification)
+        send_notification_to_user(package_request.user.id, notification_serializer.data)
         return self._standardize_response(Response(serializer.data))
 
     @action(detail=True, methods=['post'])
@@ -259,6 +276,14 @@ class PackageRequestViewSet(StandardResponseViewSet):
         package_request.status = 'rejected'
         package_request.save()
         serializer = self.get_serializer(package_request)
+        # Send notification to package request owner
+        notification = Notification.objects.create(
+            user=package_request.user,
+            travel_listing=package_request.travel_listing,
+            message=f"Your package request has been rejected."
+        )
+        notification_serializer = NotificationSerializer(notification)
+        send_notification_to_user(package_request.user.id, notification_serializer.data)
         return self._standardize_response(Response(serializer.data))
 
     @action(detail=True, methods=['post'])
@@ -295,6 +320,14 @@ class PackageRequestViewSet(StandardResponseViewSet):
         package_request.status = 'completed'
         package_request.save()
         serializer = self.get_serializer(package_request)
+        # Send notification to package request owner
+        notification = Notification.objects.create(
+            user=package_request.user,
+            travel_listing=package_request.travel_listing,
+            message=f"Your package request has been marked as completed."
+        )
+        notification_serializer = NotificationSerializer(notification)
+        send_notification_to_user(package_request.user.id, notification_serializer.data)
         return self._standardize_response(Response(serializer.data))
 
     @action(detail=True, methods=['post'], url_path='send-request-message')

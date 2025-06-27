@@ -19,6 +19,7 @@ class TravelListing(models.Model):
         ('published', 'Published'),
         ('completed', 'Completed'),
         ('canceled', 'Canceled'),
+        ('fully-booked', 'Fully Booked'),
     ]
 
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)

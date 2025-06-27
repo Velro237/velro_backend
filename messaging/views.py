@@ -3,10 +3,10 @@ from rest_framework import viewsets, status, permissions
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
-from .models import Conversation, Message, MessageAttachment
+from .models import Conversation, Message, MessageAttachment, Notification
 from .serializers import (
     ConversationSerializer, ConversationCreateSerializer,
-    MessageSerializer, MessageAttachmentSerializer
+    MessageSerializer, MessageAttachmentSerializer, NotificationSerializer
 )
 from .utils import send_message_to_conversation, send_typing_indicator
 from config.views import StandardResponseViewSet
@@ -141,3 +141,23 @@ class MessageAttachmentViewSet(viewsets.ModelViewSet):
         # Send updated message through WebSocket
         message_data = MessageSerializer(message).data
         send_message_to_conversation(message.conversation.id, message_data)
+
+class NotificationViewSet(viewsets.ModelViewSet):
+    serializer_class = NotificationSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        return Notification.objects.filter(user=self.request.user)
+
+    @action(detail=True, methods=['post'])
+    def mark_as_read(self, request, pk=None):
+        notification = self.get_object()
+        notification.is_read = True
+        notification.save()
+        return Response(self.get_serializer(notification).data)
+
+    @action(detail=False, methods=['post'])
+    def mark_all_as_read(self, request):
+        notifications = self.get_queryset().filter(is_read=False)
+        notifications.update(is_read=True)
+        return Response({'status': 'all marked as read'})

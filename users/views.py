@@ -49,7 +49,7 @@ class UserLoginView(APIView):
         # Try to find the user by email or username
         try:
             user = CustomUser.objects.get(
-                models.Q(email=username) | models.Q(username=username)
+                models.Q(email=username) | models.Q(username=username) | models.Q(phone_number=username)
             )
         except CustomUser.DoesNotExist:
             return standard_response(
