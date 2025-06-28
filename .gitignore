@@ -21,3 +21,4 @@ index.html
 staticfiles/
 media
 home.html
+render.yaml

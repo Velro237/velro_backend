@@ -17,7 +17,6 @@ cryptography==45.0.4
 daphne==4.2.0
 dj-rest-auth==7.0.1
 Django==5.2.3
-django-allauth==65.9.0
 django-cors-headers==4.7.0
 djangorestframework==3.16.0
 djangorestframework_simplejwt==5.5.0
