@@ -13,7 +13,7 @@ from .serializers import (
     UserRegistrationSerializer, UserProfileSerializer, ProfileSerializer,
     OTPSerializer, PasswordChangeSerializer, PrivacyPolicyAcceptanceSerializer,
     UserSerializer, OTPVerificationSerializer, ResendOTPSerializer, ForgotPasswordSerializer,
-    ResetPasswordSerializer, SetPasswordSerializer
+    ResetPasswordSerializer, SetPasswordSerializer, TelegramUserRegistrationSerializer
 )
 from .utils import send_verification_email
 import random
@@ -754,6 +754,34 @@ class UserViewSet(StandardResponseViewSet):
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 error=[f'An error occurred: {str(e)}']
             )
+
+    @action(detail=False, methods=['post'], permission_classes=[AllowAny])
+    def register_telegram(self, request):
+        api_key = request.headers.get('X-Telegram-Bot-Api-Key')
+        print("-----------")
+        print(api_key)
+        print(getattr(settings, 'TELEGRAM_BOT_API', None))
+        print(settings.TELEGRAM_BOT_API)
+        print("-----------")
+        if not api_key or api_key != getattr(settings, 'TELEGRAM_BOT_API', None):
+            return standard_response(
+                status_code=status.HTTP_403_FORBIDDEN,
+                error=["Invalid or missing Telegram Bot API key."]
+            )
+        serializer = TelegramUserRegistrationSerializer(data=request.data)
+        if serializer.is_valid():
+            user = serializer.save()
+            return standard_response(
+                data={
+                    'message': 'Registration successful.',
+                    'user': UserSerializer(user).data
+                },
+                status_code=status.HTTP_201_CREATED
+            )
+        return standard_response(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            error=[f"{field}: {error[0]}" for field, error in serializer.errors.items()]
+        )
 
 class ProfileViewSet(StandardResponseViewSet):
     """

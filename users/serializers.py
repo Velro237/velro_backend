@@ -232,4 +232,51 @@ class SetPasswordSerializer(serializers.Serializer):
     def validate(self, data):
         if data['password'] != data['confirm_password']:
             raise serializers.ValidationError({"confirm_password": "Passwords don't match"})
-        return data 
+        return data
+
+class TelegramUserRegistrationSerializer(serializers.ModelSerializer):
+    password = serializers.CharField(write_only=True, min_length=8)
+    confirm_password = serializers.CharField(write_only=True, min_length=8)
+    email = serializers.EmailField(required=False, allow_blank=True, allow_null=True)
+
+    class Meta:
+        model = User
+        fields = ('first_name', 'last_name', 'username', 'email', 'phone_number', 'password', 'confirm_password')
+
+    def validate(self, data):
+        if data['password'] != data['confirm_password']:
+            raise serializers.ValidationError({'confirm_password': "Passwords don't match"})
+        return data
+
+    def validate_email(self, value):
+        if value:
+            if User.objects.filter(email=value).exists():
+                raise serializers.ValidationError("A user with this email already exists.")
+        return value
+
+    def validate_username(self, value):
+        if User.objects.filter(username=value).exists():
+            raise serializers.ValidationError("A user with this username already exists.")
+        return value
+
+    def validate_phone_number(self, value):
+        phone = ''.join(filter(str.isdigit, value))
+        if len(phone) < 10 or len(phone) > 15:
+            raise serializers.ValidationError("Phone number must be between 10 and 15 digits")
+        if User.objects.filter(phone_number=phone).exists():
+            raise serializers.ValidationError("A user with this phone number already exists.")
+        return phone
+
+    def create(self, validated_data):
+        validated_data.pop('confirm_password', None)
+        user = User.objects.create(
+            first_name=validated_data['first_name'],
+            last_name=validated_data['last_name'],
+            username=validated_data['username'],
+            phone_number=validated_data['phone_number'],
+            is_phone_verified=True,
+            email=validated_data.get('email', None) or None
+        )
+        user.set_password(validated_data['password'])
+        user.save()
+        return user 
