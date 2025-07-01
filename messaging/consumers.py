@@ -164,3 +164,4 @@ class NotificationConsumer(AsyncWebsocketConsumer):
             'type': 'notification',
             'notification': event['notification']
         }))
+    

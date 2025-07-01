@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
 from .models import CustomUser, Profile, OTP, IdType
-
+from messaging.utils import send_notification_to_user
 class ProfileInline(admin.StackedInline):
     model = Profile
     can_delete = False
@@ -50,6 +50,20 @@ class CustomUserAdmin(UserAdmin):
         # Remove is_identity_verified from readonly
         readonly = [f for f in all_fields if f != 'is_identity_verified']
         return readonly
+    
+    # when is_identity_verified chagned to completed, send notification to user
+    def save_model(self, request, obj, form, change):
+        super().save_model(request, obj, form, change)
+        from datetime import datetime
+        if 'is_identity_verified' in form.changed_data and obj.is_identity_verified == 'completed':
+            # Send verification notification to user
+            notification_data = {
+                'message': f"Your identity verification has been completed successfully.",
+                # created at is now
+                'created_at': datetime.now().isoformat(),
+
+            }
+            send_notification_to_user(obj.id, notification_data)
 
 @admin.register(Profile)
 class ProfileAdmin(admin.ModelAdmin):

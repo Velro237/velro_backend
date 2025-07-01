@@ -42,5 +42,4 @@ def send_notification_to_user(user_id, notification_data):
         }
     ) 
 
-
 # {'id': 2, 'user': 3, 'travel_listing': 6, 'message': 'A new travel listing matches your alert: France to Germany - 2024-07-01', 'is_read': False, 'created_at': '2025-06-25T14:40:44.316274Z'}

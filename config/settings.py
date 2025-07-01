@@ -113,7 +113,7 @@ if DEBUG:
 else:
     DATABASES = {
         'default': dj_database_url.config(
-            default=os.getenv('DATABASE_URL', 'postgres://postgres:postgres@localhost:5432/postgres'),
+            default=os.getenv('DATABASE_URL'),
             conn_max_age=600
         )
     }
@@ -185,12 +185,6 @@ CORS_ALLOWED_ORIGINS = os.getenv('CORS_ALLOWED_ORIGINS', '').split(',') if not D
 # CSRF settings
 CSRF_TRUSTED_ORIGINS = os.getenv('CORS_ALLOWED_ORIGINS', '').split(',')
 
-# Session settings
-# SESSION_COOKIE_SECURE = not DEBUG
-# CSRF_COOKIE_SECURE = not DEBUG
-# SESSION_COOKIE_DOMAIN = None if DEBUG else '.onrender.com'
-
-
 AUTH_USER_MODEL = 'users.CustomUser'
 
 EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
@@ -207,31 +201,6 @@ TWILIO_VERIFY_SERVICE = os.getenv('TWILIO_VERIFY_SERVICE', '')
 
 # Telegram Bot
 TELEGRAM_BOT_API = os.getenv('TELEGRAM_BOT_API', '')
-
-# OAuth2 settings
-SOCIALACCOUNT_PROVIDERS = {
-    'google': {
-        'APP': {
-            'client_id': os.getenv('GOOGLE_CLIENT_ID', ''),
-            'secret': os.getenv('GOOGLE_CLIENT_SECRET', ''),
-            'key': ''
-        },
-        'SCOPE': [
-            'profile',
-            'email',
-        ],
-        'AUTH_PARAMS': {
-            'access_type': 'online',
-        }
-    },
-    'apple': {
-        'APP': {
-            'client_id': os.getenv('APPLE_CLIENT_ID', ''),
-            'secret': os.getenv('APPLE_CLIENT_SECRET', ''),
-            'key': ''
-        }
-    }
-}
 
 # JWT settings
 SIMPLE_JWT = {
