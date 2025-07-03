@@ -44,7 +44,8 @@ class Message(models.Model):
 
 class MessageAttachment(models.Model):
     message = models.ForeignKey(Message, on_delete=models.CASCADE, related_name='attachments')
-    file = models.FileField(upload_to='message_attachments/')
+    # file = models.FileField(upload_to='message_attachments/')
+    file_url = models.CharField(max_length=255, blank=True, null=True)
     file_name = models.CharField(max_length=255)
     file_type = models.CharField(max_length=50)
     created_at = models.DateTimeField(auto_now_add=True)

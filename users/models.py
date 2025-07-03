@@ -3,6 +3,9 @@ from django.db import models
 from django.utils.translation import gettext_lazy as _
 from django.db.models.signals import post_save
 from django.dispatch import receiver
+from django.conf import settings
+
+from config.utils import upload_image, delete_image, optimized_image_url, auto_crop_url
 
 class BaseUser(AbstractUser):
     class Meta:
@@ -70,27 +73,26 @@ class CustomUser(BaseUser):
 
 class Profile(models.Model):
     user = models.OneToOneField(CustomUser, on_delete=models.CASCADE, related_name='profile')
-    profile_picture = models.ImageField(upload_to='profiles/', blank=True, null=True)
     contact_info = models.CharField(max_length=255, blank=True)
     languages = models.CharField(max_length=255, blank=True)
     travel_history = models.TextField(blank=True)
     preferences = models.TextField(blank=True)
-    selfie_photo = models.ImageField(upload_to='selfies/', blank=True, null=True)
     address = models.TextField(blank=True, null=True)
     city_of_residence = models.ForeignKey("listings.Region", on_delete=models.SET_NULL, null=True, blank=True, related_name='residents')
     id_type = models.ForeignKey(IdType, on_delete=models.SET_NULL, null=True, blank=True)
     issue_country = models.ForeignKey("listings.Country", on_delete=models.SET_NULL, null=True, blank=True)
-    front_side_identity_card = models.ImageField(upload_to='identity_cards/', null=True, blank=True)
-    back_side_identity_card = models.ImageField(upload_to='identity_cards/', null=True, blank=True)
+    
+    profile_picture_url = models.CharField(max_length=255, blank=True, null=True)
+    front_side_identity_card_url = models.CharField(max_length=255, blank=True, null=True)
+    back_side_identity_card_url = models.CharField(max_length=255, blank=True, null=True)
+    selfie_photo_url = models.CharField(max_length=255, blank=True, null=True)
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
         return f"{self.user.get_full_name()}'s Profile"
 
-    def save(self, *args, **kwargs):
-        # Only save the profile, don't trigger user save
-        super().save(*args, **kwargs)
 
 @receiver(post_save, sender=CustomUser)
 def save_user_profile(sender, instance, created, **kwargs):

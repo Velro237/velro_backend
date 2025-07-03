@@ -8,7 +8,7 @@ class MessageAttachmentInline(admin.TabularInline):
     model = MessageAttachment
     extra = 0
     readonly_fields = ['created_at']
-    fields = ['file', 'file_name', 'file_type', 'created_at']
+    fields = ['file_url', 'file_name', 'file_type', 'created_at']
 
 class MessageInline(admin.TabularInline):
     model = Message
@@ -122,7 +122,7 @@ class MessageAttachmentAdmin(admin.ModelAdmin):
     
     fieldsets = (
         ('File Information', {
-            'fields': ('message', 'file', 'file_name', 'file_type')
+            'fields': ('message', 'file_url', 'file_name', 'file_type')
         }),
         ('File Details', {
             'fields': ('file_size_display', 'created_at'),

@@ -5,7 +5,8 @@ from django.utils import timezone
 from listings.models import Region, Country
 from listings.serializers import RegionSerializer, CountrySerializer
 from .models import IdType
-
+from django.conf import settings
+from config.utils import upload_image, delete_image, optimized_image_url, auto_crop_url
 User = get_user_model()
 
 class UserSerializer(serializers.ModelSerializer):
@@ -64,19 +65,69 @@ class ProfileSerializer(serializers.ModelSerializer):
     id_type_id = serializers.PrimaryKeyRelatedField(queryset=IdType.objects.all(), source='id_type', write_only=True, required=False)
     issue_country = CountrySerializer(read_only=True)
     issue_country_id = serializers.PrimaryKeyRelatedField(queryset=Country.objects.all(), source='issue_country', write_only=True, required=False)
+   
+    profile_picture = serializers.ImageField(write_only=True, required=False)
+    front_side_identity_card = serializers.ImageField(write_only=True, required=False)
+    back_side_identity_card = serializers.ImageField(write_only=True, required=False)
+    selfie_photo = serializers.ImageField(write_only=True, required=False)
 
     class Meta:
         model = Profile
         fields = (
-            'profile_picture', 'contact_info', 'languages', 'travel_history', 
-            'preferences', 'selfie_photo', 'address',
+            'profile_picture_url', 'profile_picture', 'contact_info', 'languages', 'travel_history', 
+            'preferences', 'selfie_photo_url', 'selfie_photo', 'address',
             'city_of_residence', 'city_of_residence_id',
             'id_type', 'id_type_id',
             'issue_country', 'issue_country_id',
-            'front_side_identity_card', 'back_side_identity_card',
+            'front_side_identity_card_url', 'front_side_identity_card', 'back_side_identity_card_url', 'back_side_identity_card',
             'created_at', 'updated_at'
         )
         read_only_fields = ('created_at', 'updated_at', 'city_of_residence', 'id_type', 'issue_country')
+    
+    def create(self, validated_data):
+        profile_picture = validated_data.pop('profile_picture', None)
+        front_side_identity_card = validated_data.pop('front_side_identity_card', None)
+        back_side_identity_card = validated_data.pop('back_side_identity_card', None)
+        selfie_photo = validated_data.pop('selfie_photo', None) 
+
+        instance = Profile.objects.create(**validated_data)
+        if profile_picture:
+            instance.profile_picture_url = upload_image(profile_picture, f"verlo/profile/profile_{instance.user.id}")
+        if front_side_identity_card:
+            instance.front_side_identity_card_url = upload_image(front_side_identity_card, f"verlo/front_id/front_id_{instance.user.id}")
+        if back_side_identity_card:
+            instance.back_side_identity_card_url = upload_image(back_side_identity_card, f"verlo/back_id/back_id_{instance.user.id}")
+        if selfie_photo:
+            instance.selfie_photo_url = upload_image(selfie_photo, f"verlo/selfie/selfie_{instance.user.id}")  
+        instance.save() 
+        return instance
+
+    def update(self, instance, validated_data):
+        profile_picture = validated_data.pop('profile_picture', None)
+        front_side_identity_card = validated_data.pop('front_side_identity_card', None)
+        back_side_identity_card = validated_data.pop('back_side_identity_card', None)
+        selfie_photo = validated_data.pop('selfie_photo', None)
+
+        # Update Profile fields
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+
+        if profile_picture:
+            # if instance.profile_picture_url:
+            #     delete_image(instance.profile_picture_url.split('/')[-1].split('.')[0])
+            instance.profile_picture_url = upload_image(profile_picture, f"verlo/profile/profile_{instance.user.id}")
+        
+        if front_side_identity_card:
+            instance.front_side_identity_card_url = upload_image(front_side_identity_card, f"verlo/front_id/front_id_{instance.user.id}")
+        
+        if back_side_identity_card:
+            instance.back_side_identity_card_url = upload_image(back_side_identity_card, f"verlo/back_id/back_id_{instance.user.id}")
+        
+        if selfie_photo:
+            instance.selfie_photo_url = upload_image(selfie_photo, f"verlo/selfie/selfie_{instance.user.id}")
+
+        instance.save()
+        return instance
 
 class UserProfileSerializer(serializers.ModelSerializer):
     profile = ProfileSerializer(required=False)

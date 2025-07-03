@@ -2,12 +2,13 @@ from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
 from .models import CustomUser, Profile, OTP, IdType
 from messaging.utils import send_notification_to_user
+
 class ProfileInline(admin.StackedInline):
     model = Profile
     can_delete = False
     verbose_name_plural = 'Profile'
-    fields = ('profile_picture', 'contact_info', 'languages', 'travel_history', 
-              'preferences', 'front_side_identity_card', 'back_side_identity_card', 'selfie_photo', 
+    fields = ('profile_picture_url', 'contact_info', 'languages', 'travel_history', 
+              'preferences', 'front_side_identity_card_url', 'back_side_identity_card_url', 'selfie_photo_url', 
               'address', 'created_at', 'updated_at')
     readonly_fields = ('created_at', 'updated_at')
 
@@ -68,25 +69,25 @@ class CustomUserAdmin(UserAdmin):
 @admin.register(Profile)
 class ProfileAdmin(admin.ModelAdmin):
     list_display = (
-        'id', 'user', 'profile_picture', 'contact_info', 'languages', 'travel_history',
-        'preferences', 'selfie_photo', 'address', 'city_of_residence', 'id_type',
-        'issue_country', 'front_side_identity_card', 'back_side_identity_card',
+        'id', 'user', 'profile_picture_url', 'contact_info', 'languages', 'travel_history',
+        'preferences', 'selfie_photo_url', 'address', 'city_of_residence', 'id_type',
+        'issue_country', 'front_side_identity_card_url', 'back_side_identity_card_url',
         'created_at', 'updated_at'
     )
     list_filter = ('created_at', 'updated_at')
     search_fields = ('user__email', 'user__username', 'contact_info', 'address')
     readonly_fields = (
-        'user', 'profile_picture', 'contact_info', 'languages', 'travel_history',
-        'preferences', 'selfie_photo', 'address', 'city_of_residence', 'id_type',
-        'issue_country', 'front_side_identity_card', 'back_side_identity_card',
+        'user', 'profile_picture_url', 'contact_info', 'languages', 'travel_history',
+        'preferences', 'selfie_photo_url', 'address', 'city_of_residence', 'id_type',
+        'issue_country', 'front_side_identity_card_url', 'back_side_identity_card_url',
         'created_at', 'updated_at'
     )
     fieldsets = (
         ('User Information', {'fields': ('user',)}),
         ('Contact Information', {'fields': ('contact_info', 'address')}),
-        ('Profile Details', {'fields': ('profile_picture', 'languages', 'travel_history', 'preferences')}),
+        ('Profile Details', {'fields': ('profile_picture_url', 'languages', 'travel_history', 'preferences')}),
         ('Location & ID', {'fields': ('city_of_residence', 'id_type', 'issue_country')}),
-        ('Verification Documents', {'fields': ('front_side_identity_card', 'back_side_identity_card', 'selfie_photo')}),
+        ('Verification Documents', {'fields': ('front_side_identity_card_url', 'back_side_identity_card_url', 'selfie_photo_url')}),
         ('Timestamps', {'fields': ('created_at', 'updated_at')}),
     )
 

@@ -4,7 +4,7 @@ from channels.db import database_sync_to_async
 from django.contrib.auth import get_user_model
 from django.core.files.base import ContentFile
 import base64
-
+from config.utils import upload_image
 User = get_user_model()
 
 class ChatConsumer(AsyncWebsocketConsumer):
@@ -109,9 +109,12 @@ class ChatConsumer(AsyncWebsocketConsumer):
             print(file_name)
             print(file_type)
             print("++++++++++++++++++++++++++++++++++++++")
+            file_url = upload_image(file_data, public_id=f'message_attachments/{message.id}/{file_name}')
+            print("File URL after upload:", file_url)
             MessageAttachment.objects.create(
                 message=message,
-                file=ContentFile(file_data, name=file_name),
+                # file=ContentFile(file_data, name=file_name),
+                file_url=file_url,
                 file_name=file_name,
                 file_type=file_type
             )
@@ -131,7 +134,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
                     'id': att.id,
                     'file_name': att.file_name,
                     'file_type': att.file_type,
-                    'file_url': att.file.url
+                    'file_url': att.file_url,
                 }
                 for att in message.attachments.all()
             ]

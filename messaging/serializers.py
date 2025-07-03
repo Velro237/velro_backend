@@ -2,13 +2,36 @@ from rest_framework import serializers
 from .models import Conversation, Message, MessageAttachment, Notification
 from users.serializers import UserProfileSerializer
 from listings.serializers import TravelListingSerializer, PackageRequestSerializer
-
+from config.utils import upload_image
 class MessageAttachmentSerializer(serializers.ModelSerializer):
+    file = serializers.FileField(write_only=True, required=False)
     class Meta:
         model = MessageAttachment
-        fields = ('id', 'file', 'file_name', 'file_type', 'created_at')
+        fields = ('id', 'file', 'file_name', 'file_url', 'file_type', 'created_at')
         read_only_fields = ('created_at',)
+    
+    def create(self, validated_data):
+        file = validated_data.pop('file', None)
+        instance = MessageAttachment.objects.create(**validated_data)
 
+        if file:
+            file_url = upload_image(file, public_id=f'message_attachments/{instance.message.id}/{file.name}')
+            instance.file_url = file_url
+            instance.save()
+        return instance
+    
+    def update(self, instance, validated_data):
+        file = validated_data.pop('file', None)
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+
+        if file:
+            file_url = upload_image(file, public_id=f'message_attachments/{instance.message.id}/{file.name}')
+            instance.file_url = file_url
+        
+        instance.save()
+        return instance
+    
 class MessageSerializer(serializers.ModelSerializer):
     sender = UserProfileSerializer(read_only=True)
     attachments = MessageAttachmentSerializer(many=True, read_only=True)
@@ -30,14 +53,36 @@ class MessageSerializer(serializers.ModelSerializer):
         
         # Handle file attachments
         for file in uploaded_files:
+            file_url = upload_image(file, public_id=f'message_attachments/{message.id}/{file.name}')
             MessageAttachment.objects.create(
                 message=message,
-                file=file,
+                # file=file,
+                file_url=file_url,
                 file_name=file.name,
                 file_type=file.content_type
             )
         
         return message
+    
+    def update(self, instance, validated_data):
+        uploaded_files = validated_data.pop('uploaded_files', [])
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+
+        # Handle file attachments
+        if uploaded_files:
+            for file in uploaded_files:
+                file_url = upload_image(file, public_id=f'message_attachments/{instance.id}/{file.name}')
+                MessageAttachment.objects.create(
+                    message=instance,
+                    # file=file,
+                    file_url=file_url,
+                    file_name=file.name,
+                    file_type=file.content_type
+                )
+        
+        instance.save()
+        return instance
 
 class ConversationSerializer(serializers.ModelSerializer):
     participants = UserProfileSerializer(many=True, read_only=True)

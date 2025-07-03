@@ -3,7 +3,7 @@ from django.utils.translation import gettext_lazy as _
 from users.models import CustomUser
 from django.conf import settings
 from django.core.validators import MinValueValidator, MaxValueValidator
-
+from config.utils import upload_image, delete_image, optimized_image_url, auto_crop_url
 class TransportType(models.Model):
     name = models.CharField(max_length=50, unique=True)
     description = models.TextField(blank=True)
@@ -96,7 +96,6 @@ class ListingImage(models.Model):
         if self.travel_listing:
             return f"Image for travel listing {self.travel_listing.id}"
         return f"Image for package request {self.package_request.id}"
-
     class Meta:
         ordering = ['-is_primary', '-created_at']
 
