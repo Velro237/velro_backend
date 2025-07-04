@@ -46,10 +46,15 @@ class UserLoginView(APIView):
                 error=['Please provide both username/email and password']
             )
 
-        # Try to find the user by email or username
+        # Try to find the user by email or username or phone (normalize phone)
+        normalized_username = username
+        if username and username.replace('+', '').isdigit():
+            normalized_username = ''.join(filter(str.isdigit, username))
         try:
             user = CustomUser.objects.get(
-                models.Q(email=username) | models.Q(username=username) | models.Q(phone_number=username)
+                models.Q(email=username) |
+                models.Q(username=username) |
+                models.Q(phone_number=normalized_username)
             )
         except CustomUser.DoesNotExist:
             return standard_response(
@@ -96,7 +101,7 @@ class UserViewSet(StandardResponseViewSet):
         return User.objects.filter(is_superuser=False)
 
     def get_permissions(self):
-        if self.action in ['register', 'verify_otp', 'resend_otp', 'forgot_password']:
+        if self.action in ['register', 'verify_otp', 'resend_otp', 'forgot_password', 'verify_phone_firebase']:
             return [AllowAny()]
         return super().get_permissions()
 
@@ -321,9 +326,11 @@ class UserViewSet(StandardResponseViewSet):
                     )
 
             elif verification_method == 'phone':
-                # Find user by phone number
+                # Normalize phone number for lookup
+                normalized_identifier = ''.join(filter(str.isdigit, identifier))
+                # Find user by normalized phone number
                 try:
-                    user = User.objects.get(phone_number=identifier)
+                    user = User.objects.get(phone_number=normalized_identifier)
                 except User.DoesNotExist:
                     return standard_response(
                         status_code=status.HTTP_404_NOT_FOUND,
@@ -333,11 +340,14 @@ class UserViewSet(StandardResponseViewSet):
                 try:
                     # Initialize Twilio client
                     client = Client(settings.TWILIO_ACCOUNT_SID, settings.TWILIO_AUTH_TOKEN)
-                    
+                    # Always send with country code and plus (re-add +251 if missing, or use user.phone_number)
+                    to_number = user.phone_number
+                    if not to_number.startswith('+'):
+                        to_number = '+' + to_number
                     # Send verification code via Twilio
                     verification = client.verify.v2.services(settings.TWILIO_VERIFY_SERVICE) \
                         .verifications \
-                        .create(to=identifier, channel='sms')
+                        .create(to=to_number, channel='sms')
 
                     # Create OTP record in database
                     OTP.objects.create(
@@ -517,29 +527,31 @@ class UserViewSet(StandardResponseViewSet):
     def send_phone_otp(self, request):
         user = request.user
         phone_number = request.data.get('phone_number')
-
         if not phone_number:
             return standard_response(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 error=['Phone number is required']
             )
-
+        # Normalize phone number
+        normalized_phone = ''.join(filter(str.isdigit, phone_number))
+        # Always send with country code and plus (re-add +251 if missing, or use user.phone_number)
+        to_number = normalized_phone
+        if not to_number.startswith('251'):
+            to_number = '251' + to_number.lstrip('0')
+        to_number = '+' + to_number if not to_number.startswith('+') else to_number
         try:
             # Initialize Twilio client
             client = Client(settings.TWILIO_ACCOUNT_SID, settings.TWILIO_AUTH_TOKEN)
-            
             # Send verification code via Twilio
             verification = client.verify.v2.services(settings.TWILIO_VERIFY_SERVICE) \
                 .verifications \
-                .create(to=phone_number, channel='sms')
-
+                .create(to=to_number, channel='sms')
             # Create OTP record in database
             otp = OTP.objects.create(
                 user=user,
                 code='',  # We don't store the actual code as Twilio handles it
                 purpose='phone_verification'
             )
-
             return standard_response(
                 data={
                     'message': 'OTP sent successfully',
@@ -547,7 +559,6 @@ class UserViewSet(StandardResponseViewSet):
                 },
                 status_code=status.HTTP_200_OK
             )
-
         except TwilioRestException as e:
             return standard_response(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -782,6 +793,80 @@ class UserViewSet(StandardResponseViewSet):
             status_code=status.HTTP_400_BAD_REQUEST,
             error=[f"{field}: {error[0]}" for field, error in serializer.errors.items()]
         )
+
+    @action(detail=False, methods=['post'], permission_classes=[AllowAny])
+    def verify_phone_firebase(self, request):
+        """
+        Verifies a user's phone number using a Firebase ID token.
+        Expects: { "firebase_id_token": "...", "user_id": ... }
+        """
+        from django.conf import settings
+        try:
+            import firebase_admin
+            from firebase_admin import auth as firebase_auth
+        except ImportError:
+            return standard_response(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                error=["firebase-admin is not installed on the server."]
+            )
+
+        firebase_id_token = request.data.get('firebase_id_token')
+        user_id = request.data.get('user_id')
+        if not firebase_id_token or not user_id:
+            return standard_response(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                error=["firebase_id_token and user_id are required."]
+            )
+        try:
+            user = User.objects.get(id=user_id)
+        except User.DoesNotExist:
+            return standard_response(
+                status_code=status.HTTP_404_NOT_FOUND,
+                error=["User not found."]
+            )
+        # Initialize Firebase app if not already
+        if not firebase_admin._apps:
+            cred = getattr(settings, 'FIREBASE_CREDENTIAL', None)
+            if cred is None:
+                return standard_response(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    error=["FIREBASE_CREDENTIAL is not configured in settings."]
+                )
+            firebase_admin.initialize_app(cred)
+        try:
+            decoded_token = firebase_auth.verify_id_token(firebase_id_token)
+            print("Decoded Firebase Token: ##################33")
+            print(decoded_token)
+            phone_number = decoded_token.get('phone_number')
+            if not phone_number:
+                return standard_response(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    error=["No phone_number found in Firebase token."]
+                )
+            # Normalize phone number for comparison
+            user_phone = ''.join(filter(str.isdigit, user.phone_number))
+            firebase_phone = ''.join(filter(str.isdigit, phone_number))
+            if user_phone != firebase_phone:
+                return standard_response(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    error=["Phone number in Firebase token does not match user's phone number."]
+                )
+            user.is_phone_verified = True
+            user.save()
+            return standard_response(
+                data={"message": "Phone number verified successfully via Firebase."},
+                status_code=status.HTTP_200_OK
+            )
+        except firebase_auth.InvalidIdTokenError:
+            return standard_response(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                error=["Invalid Firebase ID token."]
+            )
+        except Exception as e:
+            return standard_response(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                error=[f"An error occurred: {str(e)}"]
+            )
 
 class ProfileViewSet(StandardResponseViewSet):
     """

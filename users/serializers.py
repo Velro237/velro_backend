@@ -42,6 +42,8 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
         return phone
 
     def create(self, validated_data):
+        # Ensure phone number is normalized before saving
+        validated_data['phone_number'] = ''.join(filter(str.isdigit, validated_data['phone_number']))
         user = User.objects.create(
             email=validated_data['email'],
             username=validated_data['username'],
@@ -320,6 +322,8 @@ class TelegramUserRegistrationSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         validated_data.pop('confirm_password', None)
+        # Ensure phone number is normalized before saving
+        validated_data['phone_number'] = ''.join(filter(str.isdigit, validated_data['phone_number']))
         user = User.objects.create(
             first_name=validated_data['first_name'],
             last_name=validated_data['last_name'],

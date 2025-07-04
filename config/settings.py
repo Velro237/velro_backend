@@ -16,6 +16,8 @@ from datetime import timedelta
 from dotenv import load_dotenv
 from urllib.parse import urlparse
 import dj_database_url
+import firebase_admin
+from firebase_admin import credentials
 
 load_dotenv()
 
@@ -238,3 +240,5 @@ CLOUDINARY_API_SECRET = os.getenv('CLOUDINARY_API_SECRET')
 
 # Configure WhiteNoise
 STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
+
+FIREBASE_CREDENTIAL = credentials.Certificate(os.path.join(BASE_DIR, 'adrash-firebase.json'))

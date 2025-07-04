@@ -16,9 +16,12 @@ db.sqlite3-wal
 .github
 .idea/
 *.log
+adrash-firebase.json
+firebase_phone_test.html
 
 index.html
 staticfiles/
 media
 home.html
 render.yaml
+

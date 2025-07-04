@@ -92,6 +92,21 @@ python manage.py runserver
 - `PUT /api/users/profile/` - Update profile
 - `POST /api/users/users/accept-privacy-policy/` - Accept privacy policy
 
+## Firebase Phone Verification
+
+- New endpoint: `POST /users/verify_phone_firebase/`
+- Body: `{ "firebase_id_token": "...", "user_id": ... }`
+- Requires `firebase-admin` (see requirements.txt)
+- You must configure `FIREBASE_CREDENTIAL` in your Django settings, e.g.:
+
+```python
+import firebase_admin
+from firebase_admin import credentials
+FIREBASE_CREDENTIAL = credentials.Certificate('/path/to/serviceAccountKey.json')
+```
+
+This endpoint verifies the Firebase ID token, checks the phone number, and marks the user's phone as verified if valid.
+
 ## Development
 
 ### Running Tests
