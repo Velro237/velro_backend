@@ -241,4 +241,4 @@ CLOUDINARY_API_SECRET = os.getenv('CLOUDINARY_API_SECRET')
 # Configure WhiteNoise
 STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 
-FIREBASE_CREDENTIAL = credentials.Certificate(os.path.join(BASE_DIR, 'adrash-firebase.json'))
+# FIREBASE_CREDENTIAL = credentials.Certificate(os.path.join(BASE_DIR, 'adrash-firebase.json'))
