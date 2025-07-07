@@ -3,17 +3,17 @@ from rest_framework import viewsets, status, generics, permissions
 from rest_framework.views import APIView
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated, AllowAny
+from rest_framework.permissions import IsAuthenticated, AllowAny, IsAdminUser
 from rest_framework.exceptions import PermissionDenied
 from django.contrib.auth import get_user_model, authenticate
 from django.utils import timezone
 from rest_framework_simplejwt.tokens import RefreshToken
-from .models import Profile, OTP, CustomUser
+from .models import Profile, OTP, CustomUser, IdType
 from .serializers import (
     UserRegistrationSerializer, UserProfileSerializer, ProfileSerializer,
     OTPSerializer, PasswordChangeSerializer, PrivacyPolicyAcceptanceSerializer,
     UserSerializer, OTPVerificationSerializer, ResendOTPSerializer, ForgotPasswordSerializer,
-    ResetPasswordSerializer, SetPasswordSerializer, TelegramUserRegistrationSerializer
+    ResetPasswordSerializer, SetPasswordSerializer, TelegramUserRegistrationSerializer, IdTypeSerializer
 )
 from .utils import send_verification_email
 import random
@@ -1137,3 +1137,20 @@ class AppleSignInView(APIView):
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 error=[f'An error occurred: {str(e)}']
             )
+
+
+class IdTypeViewSet(StandardResponseViewSet):
+    """
+    API endpoint for ID types
+    """
+    queryset = IdType.objects.all()
+    serializer_class = IdTypeSerializer
+    permission_classes = [IsAuthenticated, IsAdminUser]
+
+    def get_permissions(self):
+        if self.action in ['list', 'retrieve']:
+            return [AllowAny()]
+        return super().get_permissions()
+
+    def perform_create(self, serializer):
+        serializer.save()

@@ -5,7 +5,7 @@ from rest_framework.response import Response
 from django.db.models import Q
 from datetime import datetime
 from .models import TravelListing, PackageRequest, Alert, Country, Region, Review
-from .serializers import TravelListingSerializer, PackageRequestSerializer, AlertSerializer, CountrySerializer, RegionSerializer, ReviewSerializer
+from .serializers import TravelListingSerializer, PackageRequestSerializer, AlertSerializer, CountrySerializer, RegionSerializer, ReviewSerializer, TransportTypeSerializer, PackageTypeSerializer
 from config.views import StandardResponseViewSet
 from rest_framework.permissions import IsAuthenticated, IsAdminUser, AllowAny
 from rest_framework import status
@@ -15,7 +15,7 @@ from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
 from messaging.serializers import NotificationSerializer
 from messaging.utils import send_notification_to_user
-
+from listings.models import TransportType, PackageType
 # Create your views here.
 
 class IsOwnerOrReadOnly(permissions.BasePermission):
@@ -570,3 +570,32 @@ class ReviewViewSet(StandardResponseViewSet):
 class IsReviewerOnly(IsAuthenticated):
     def has_object_permission(self, request, view, obj):
         return obj.reviewer == request.user
+
+
+class TransportTypeViewset(StandardResponseViewSet):
+    """
+    API endpoint for transport types
+    """
+    queryset = TransportType.objects.all()
+    serializer_class = TransportTypeSerializer
+
+    def get_permissions(self):
+        if self.action in ['create', 'update', 'partial_update', 'destroy']:
+            permission_classes = [IsAdminUser]
+        else:
+            permission_classes = [AllowAny]
+        return [permission() for permission in permission_classes]
+
+class PackageTypeViewSet(StandardResponseViewSet):
+    """
+    API endpoint for package types
+    """
+    queryset = PackageType.objects.all()
+    serializer_class = PackageTypeSerializer
+
+    def get_permissions(self):
+        if self.action in ['create', 'update', 'partial_update', 'destroy']:
+            permission_classes = [IsAdminUser]
+        else:
+            permission_classes = [AllowAny]
+        return [permission() for permission in permission_classes]

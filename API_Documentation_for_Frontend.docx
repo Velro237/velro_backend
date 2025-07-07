@@ -1,0 +1,152 @@
+[API Documentation for Frontend Development]
+
+API Base Path: /api/
+
+---
+
+1. Users API (/api/users/)
+
+ViewSets
+
+- /api/users/users/ (UserViewSet)
+  - GET: List all users (excluding superusers).
+  - POST: Create a new user (not typically used; use register instead).
+  - PUT/PATCH: Update the current user's info.
+  - DELETE: Delete the current user's account.
+  - Extra Actions:
+    - POST /api/users/users/register/: Register a new user account. Sends an OTP to the user's email for verification.
+    - POST /api/users/users/verify_otp/: Verify the OTP sent to the user's email.
+    - POST /api/users/users/resend_otp/: Resend the OTP for email or password reset.
+    - POST /api/users/users/forgot_password/: Initiate password reset (sends OTP to email/phone).
+    - POST /api/users/users/change_password/: Change the current user's password.
+    - POST /api/users/users/accept_privacy_policy/: Mark the privacy policy as accepted for the current user.
+    - GET /api/users/users/me/: Get the current user's profile information.
+    - POST /api/users/users/reset_password/: Reset password using OTP (email or phone).
+    - POST /api/users/users/send_phone_otp/: Send an OTP to the user's phone number.
+    - POST /api/users/users/verify_phone_otp/: Verify the OTP sent to the user's phone.
+    - POST /api/users/users/set_password/: Set a password for a user (used after registration or social login).
+    - POST /api/users/users/register_google/: Register a new user using Google authentication.
+    - POST /api/users/users/google_profile_info/: Get Google profile info from an id_token (does not create a user).
+    - POST /api/users/users/register_telegram/: Register a new user using Telegram authentication.
+    - POST /api/users/users/verify_phone_firebase/: Verify a user's phone number using a Firebase ID token.
+
+- /api/users/profile/ (ProfileViewSet)
+  - GET: List all user profiles.
+  - POST: Create a profile for the current user.
+  - PUT/PATCH: Update the current user's profile.
+  - DELETE: Delete the current user's profile.
+
+Standalone Endpoints
+
+- POST /api/users/login/: Log in with username/email/phone and password. Returns JWT tokens.
+- POST /api/users/token/refresh/: Refresh JWT access token.
+- POST /api/users/google/signin/: Log in with Google account.
+- POST /api/users/apple/signin/: Log in with Apple account.
+
+---
+
+2. Listings API (/api/listings/)
+
+ViewSets
+
+- /api/listings/travel/ (TravelListingViewSet)
+  - GET: List all travel listings (with filters for location, date, status).
+  - POST: Create a new travel listing (user must be identity verified).
+  - PUT/PATCH: Update a travel listing (owner only).
+  - DELETE: Delete a travel listing (owner only).
+  - Extra Actions:
+    - GET /api/listings/travel/my_listings/: List all travel listings created by the current user.
+    - POST /api/listings/travel/{id}/complete/: Mark a travel listing as completed (owner only).
+
+- /api/listings/packages/ (PackageRequestViewSet)
+  - GET: List all package requests where the user is involved.
+  - POST: Create a new package request.
+  - PUT/PATCH: Update a package request (owner only).
+  - DELETE: Delete a package request (owner only).
+  - Extra Actions:
+    - GET /api/listings/packages/my_requests/: List all package requests created by the current user.
+    - GET /api/listings/packages/received_requests/: List all package requests for travel listings owned by the current user.
+    - POST /api/listings/packages/{id}/accept/: Accept a package request (travel listing owner only).
+    - POST /api/listings/packages/{id}/reject/: Reject a package request (travel listing owner only).
+    - POST /api/listings/packages/{id}/complete/: Mark a package request as completed (owner only).
+    - POST /api/listings/packages/{id}/send-request-message/: Send a message about a package request.
+
+- /api/listings/alerts/ (AlertViewSet)
+  - GET: List all alerts.
+  - POST: Create a new alert.
+  - PUT/PATCH: Update an alert (owner only).
+  - DELETE: Delete an alert (owner only).
+  - Extra Actions:
+    - GET /api/listings/alerts/my_alerts/: List all alerts created by the current user.
+    - POST /api/listings/alerts/{id}/toggle_active/: Toggle the active status of an alert (owner only).
+
+- /api/listings/countries/ (CountryViewSet)
+  - GET: List all countries.
+  - POST: Create a new country (admin only).
+  - PUT/PATCH: Update a country (admin only).
+  - DELETE: Delete a country (admin only).
+
+- /api/listings/regions/ (RegionViewSet)
+  - GET: List all regions (can filter by country).
+  - POST: Create a new region (admin only).
+  - PUT/PATCH: Update a region (admin only).
+  - DELETE: Delete a region (admin only).
+  - Extra Actions:
+    - GET /api/listings/regions/by-country/{country_id}/: List all regions for a specific country.
+
+- /api/listings/reviews/ (ReviewViewSet)
+  - GET: List all reviews.
+  - POST: Create a new review.
+  - PUT/PATCH: Update a review (reviewer only).
+  - DELETE: Delete a review (reviewer only).
+  - Extra Actions:
+    - GET /api/listings/reviews/by-travel-listing-owner/{owner_id}/: List reviews for a specific travel listing owner.
+    - GET /api/listings/reviews/by-package-request-owner/{owner_id}/: List reviews for a specific package request owner.
+
+---
+
+3. Messaging API (/api/messaging/)
+
+ViewSets
+
+- /api/messaging/conversations/ (ConversationViewSet)
+  - GET: List all conversations for the current user.
+  - POST: Create a new conversation.
+  - PUT/PATCH: Update a conversation.
+  - DELETE: Delete a conversation.
+  - Extra Actions:
+    - GET /api/messaging/conversations/{id}/messages/: List all messages in a conversation.
+    - POST /api/messaging/conversations/{id}/send_message/: Send a message in a conversation.
+    - POST /api/messaging/conversations/{id}/typing/: Send a typing indicator in a conversation.
+    - GET /api/messaging/conversations/unread_count/: Get the count of unread messages per conversation.
+
+- /api/messaging/messages/ (MessageViewSet)
+  - GET: List all messages for the current user.
+  - POST: Create a new message.
+  - PUT/PATCH: Update a message (owner only).
+  - DELETE: Delete a message (owner only).
+
+- /api/messaging/attachments/ (MessageAttachmentViewSet)
+  - GET: List all message attachments for the current user.
+  - POST: Upload a new message attachment.
+  - PUT/PATCH: Update an attachment.
+  - DELETE: Delete an attachment.
+
+- /api/messaging/notifications/ (NotificationViewSet)
+  - GET: List all notifications for the current user.
+  - POST: Create a notification.
+  - PUT/PATCH: Update a notification.
+  - DELETE: Delete a notification.
+  - Extra Actions:
+    - POST /api/messaging/notifications/{id}/mark_as_read/: Mark a notification as read.
+    - POST /api/messaging/notifications/mark_all_as_read/: Mark all notifications as read for the current user.
+
+---
+
+Notes for Frontend Developers
+
+- All endpoints (except those with AllowAny) require JWT authentication.
+- Use /api/users/login/ to obtain tokens, and /api/users/token/refresh/ to refresh them.
+- Extra actions (custom endpoints) are usually accessed as sub-paths of the resource, e.g., /api/users/users/register/.
+- For actions with {id} in the path, replace with the actual resource ID.
+- Some endpoints (e.g., Google/Apple sign-in, OTP, password reset) are open to unauthenticated users. 
