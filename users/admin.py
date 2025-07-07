@@ -76,12 +76,12 @@ class ProfileAdmin(admin.ModelAdmin):
     )
     list_filter = ('created_at', 'updated_at')
     search_fields = ('user__email', 'user__username', 'contact_info', 'address')
-    readonly_fields = (
-        'user', 'profile_picture_url', 'contact_info', 'languages', 'travel_history',
-        'preferences', 'selfie_photo_url', 'address', 'city_of_residence', 'id_type',
-        'issue_country', 'front_side_identity_card_url', 'back_side_identity_card_url',
-        'created_at', 'updated_at'
-    )
+    # readonly_fields = (
+    #     'user', 'profile_picture_url', 'contact_info', 'languages', 'travel_history',
+    #     'preferences', 'selfie_photo_url', 'address', 'city_of_residence', 'id_type',
+    #     'issue_country', 'front_side_identity_card_url', 'back_side_identity_card_url',
+    #     'created_at', 'updated_at'
+    # )
     fieldsets = (
         ('User Information', {'fields': ('user',)}),
         ('Contact Information', {'fields': ('contact_info', 'address')}),
