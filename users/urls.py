@@ -1,9 +1,9 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-from rest_framework_simplejwt.views import TokenRefreshView
+# from rest_framework_simplejwt.views import TokenRefreshView
 from .views import (
     UserViewSet, ProfileViewSet, UserLoginView,
-    GoogleSignInView, AppleSignInView, IdTypeViewSet
+    GoogleSignInView, AppleSignInView, IdTypeViewSet,TokenRefreshView
 )
 
 router = DefaultRouter()
