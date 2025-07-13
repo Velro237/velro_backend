@@ -71,12 +71,20 @@ class TravelListingViewSet(StandardResponseViewSet):
 
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)
+    
+    # auth is required for detail view only, so get all travel listings dont require auth
+    def get_permissions(self):
+        if self.action in ['create', 'update', 'partial_update', 'destroy']:
+            permission_classes = [IsAuthenticated, IsOwnerOrReadOnly, IsIdentityVerified]
+        else:
+            permission_classes = [AllowAny]
+        return [permission() for permission in permission_classes]
 
     def get_queryset(self):
         """
         This view returns a list of travel listings with the following visibility rules:
-        - Published listings are visible to all authenticated users
-        - Drafted, completed, and canceled listings are only visible to their owners
+        - Published listings are visible to all users (authenticated and anonymous)
+        - Drafted, completed, and canceled listings are only visible to their owners (if authenticated)
         Can be filtered by pickup location, destination, date (from and above), and status.
         Query params:
         - pickup_country: ID of the pickup country
@@ -95,15 +103,26 @@ class TravelListingViewSet(StandardResponseViewSet):
         status = self.request.query_params.get('status', None)
 
         # Apply visibility rules
-        if status:
-            queryset = queryset.filter(
-                Q(user=self.request.user, status=status)
-            )
+        if self.request.user.is_authenticated:
+            if status:
+                queryset = queryset.filter(
+                    Q(user=self.request.user, status=status)
+                )
+            else:
+                queryset = queryset.filter(
+                    Q(status='published') |
+                    Q(user=self.request.user, status__in=['drafted', 'completed', 'canceled'])
+                )
         else:
-            queryset = queryset.filter(
-                Q(status='published') |
-                Q(user=self.request.user, status__in=['drafted', 'completed', 'canceled'])
-            )
+            # For anonymous users, only show published listings
+            if status:
+                if status == 'published':
+                    queryset = queryset.filter(status='published')
+                else:
+                    # Anonymous users can't see non-published listings
+                    return TravelListing.objects.none()
+            else:
+                queryset = queryset.filter(status='published')
 
         # Apply additional filters using IDs
         if pickup_country:
