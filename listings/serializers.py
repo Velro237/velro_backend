@@ -38,7 +38,6 @@ class PackageTypeSerializer(serializers.ModelSerializer):
         fields = ['id', 'name', 'description']
 
 class TravelListingSerializer(serializers.ModelSerializer):
-    user = serializers.ReadOnlyField(source='user.username')
     pickup = RegionWithCountrySerializer(source='pickup_region', read_only=True)
     destination = RegionWithCountrySerializer(source='destination_region', read_only=True)
     pickup_region_id = serializers.PrimaryKeyRelatedField(queryset=Region.objects.all(), source='pickup_region', write_only=True)
@@ -77,8 +76,13 @@ class TravelListingSerializer(serializers.ModelSerializer):
             instance.destination_country = destination_region.country
         return super().update(instance, validated_data)
 
+    def to_representation(self, instance):
+        representation = super().to_representation(instance)
+        from users.serializers import UserProfileSerializer  # Lazy import to avoid circular import
+        representation['user'] = UserProfileSerializer(instance.user).data
+        return representation
+
 class PackageRequestSerializer(serializers.ModelSerializer):
-    user = serializers.ReadOnlyField(source='user.username')
     travel_listing = serializers.PrimaryKeyRelatedField(queryset=TravelListing.objects.all())
     package_types = serializers.PrimaryKeyRelatedField(queryset=PackageType.objects.all(), many=True, required=False)
     total_price = serializers.ReadOnlyField()
@@ -94,10 +98,9 @@ class PackageRequestSerializer(serializers.ModelSerializer):
         read_only_fields = ['user', 'status', 'created_at', 'updated_at', 'total_price']
 
     def to_representation(self, instance):
-        """
-        Convert `package_types` from a list of IDs to a list of nested objects.
-        """
         representation = super().to_representation(instance)
+        from users.serializers import UserProfileSerializer  # Lazy import to avoid circular import
+        representation['user'] = UserProfileSerializer(instance.user).data
         representation['package_types'] = PackageTypeSerializer(instance.package_types.all(), many=True).data
         return representation
 

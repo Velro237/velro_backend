@@ -36,7 +36,6 @@ class JWTAuthMiddleware(BaseMiddleware):
                 scope['user'] = AnonymousUser()
         else:
             scope['user'] = AnonymousUser()
-            print("No token provided 000000000000000000000")
 
         return await self.inner(scope, receive, send)
 

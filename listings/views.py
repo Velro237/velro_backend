@@ -91,6 +91,10 @@ class TravelListingViewSet(StandardResponseViewSet):
         - pickup_region: ID of the pickup region
         - destination_country: ID of the destination country
         - destination_region: ID of the destination region
+        - pickup_country_name: Name (or partial name) of the pickup country
+        - pickup_region_name: Name (or partial name) of the pickup region
+        - destination_country_name: Name (or partial name) of the destination country
+        - destination_region_name: Name (or partial name) of the destination region
         - travel_date: listings with travel_date >= this date (YYYY-MM-DD)
         - status: filter by status
         """
@@ -99,6 +103,10 @@ class TravelListingViewSet(StandardResponseViewSet):
         pickup_region = self.request.query_params.get('pickup_region', None)
         destination_country = self.request.query_params.get('destination_country', None)
         destination_region = self.request.query_params.get('destination_region', None)
+        pickup_country_name = self.request.query_params.get('pickup_country_name', None)
+        pickup_region_name = self.request.query_params.get('pickup_region_name', None)
+        destination_country_name = self.request.query_params.get('destination_country_name', None)
+        destination_region_name = self.request.query_params.get('destination_region_name', None)
         travel_date = self.request.query_params.get('travel_date', None)
         status = self.request.query_params.get('status', None)
 
@@ -133,6 +141,17 @@ class TravelListingViewSet(StandardResponseViewSet):
             queryset = queryset.filter(destination_country_id=destination_country)
         if destination_region:
             queryset = queryset.filter(destination_region_id=destination_region)
+
+        # Apply additional filters using names (case-insensitive, partial match)
+        if pickup_country_name:
+            queryset = queryset.filter(pickup_country__name__icontains=pickup_country_name)
+        if pickup_region_name:
+            queryset = queryset.filter(pickup_region__name__icontains=pickup_region_name)
+        if destination_country_name:
+            queryset = queryset.filter(destination_country__name__icontains=destination_country_name)
+        if destination_region_name:
+            queryset = queryset.filter(destination_region__name__icontains=destination_region_name)
+
         if travel_date:
             try:
                 date_obj = datetime.strptime(travel_date, '%Y-%m-%d').date()

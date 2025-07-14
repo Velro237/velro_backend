@@ -8,10 +8,14 @@ class MessageAttachmentSerializer(serializers.ModelSerializer):
     class Meta:
         model = MessageAttachment
         fields = ('id', 'file', 'file_name', 'file_url', 'file_type', 'created_at')
-        read_only_fields = ('created_at',)
+        read_only_fields = ('file_name', 'file_url', 'file_type', 'created_at')
     
     def create(self, validated_data):
         file = validated_data.pop('file', None)
+        # Set file_name and file_type automatically from the uploaded file
+        if file:
+            validated_data['file_name'] = file.name
+            validated_data['file_type'] = getattr(file, 'content_type', '')
         instance = MessageAttachment.objects.create(**validated_data)
 
         if file:
@@ -26,6 +30,8 @@ class MessageAttachmentSerializer(serializers.ModelSerializer):
             setattr(instance, attr, value)
 
         if file:
+            instance.file_name = file.name
+            instance.file_type = getattr(file, 'content_type', '')
             file_url = upload_image(file, public_id=f'message_attachments/{instance.message.id}/{file.name}')
             instance.file_url = file_url
         

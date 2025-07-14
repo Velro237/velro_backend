@@ -11,6 +11,7 @@ from .serializers import (
 from .utils import send_message_to_conversation, send_typing_indicator
 from config.views import StandardResponseViewSet
 from .permissions import IsMessageOwner
+from config.utils import standard_response
 
 # Create your views here.
 
@@ -117,6 +118,26 @@ class MessageViewSet(StandardResponseViewSet):
         if self.action in ['update', 'partial_update', 'destroy']:
             return [permissions.IsAuthenticated(), IsMessageOwner()]
         return [permissions.IsAuthenticated()]
+
+    @action(detail=True, methods=['post'])
+    def mark_as_read(self, request, pk=None):
+        message = self.get_object()
+        message.is_read = True
+        message.save()
+        return standard_response(data=self.get_serializer(message).data, status_code=status.HTTP_200_OK)
+
+    @action(detail=False, methods=['post'], url_path='mark_multiple_as_read')
+    def mark_multiple_as_read(self, request):
+        message_ids = request.data.get('message_ids', [])
+        if not isinstance(message_ids, list) or not all(isinstance(mid, int) for mid in message_ids):
+            return standard_response(error=['message_ids must be a list of integers.'], status_code=status.HTTP_400_BAD_REQUEST)
+        user = request.user
+        # Only mark as read messages the user has access to
+        messages = Message.objects.filter(id__in=message_ids, conversation__participants=user)
+        updated_count = messages.update(is_read=True)
+        # Return the updated messages
+        serializer = self.get_serializer(messages, many=True)
+        return standard_response(data={'updated_count': updated_count, 'messages': serializer.data}, status_code=status.HTTP_200_OK)
 
 
 class MessageAttachmentViewSet(viewsets.ModelViewSet):

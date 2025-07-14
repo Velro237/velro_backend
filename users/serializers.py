@@ -76,6 +76,7 @@ class ProfileSerializer(serializers.ModelSerializer):
     class Meta:
         model = Profile
         fields = (
+            'id',  # <-- Add this line to include the profile id
             'profile_picture_url', 'profile_picture', 'contact_info', 'languages', 'travel_history', 
             'preferences', 'selfie_photo_url', 'selfie_photo', 'address',
             'city_of_residence', 'city_of_residence_id',
