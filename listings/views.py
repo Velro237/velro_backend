@@ -16,6 +16,7 @@ from channels.layers import get_channel_layer
 from messaging.serializers import NotificationSerializer
 from messaging.utils import send_notification_to_user
 from listings.models import TransportType, PackageType
+from reporting.models import EventLog
 # Create your views here.
 
 class IsOwnerOrReadOnly(permissions.BasePermission):
@@ -198,7 +199,13 @@ class PackageRequestViewSet(StandardResponseViewSet):
     permission_classes = [permissions.IsAuthenticated, IsPackageRequestOwnerOrTravelListingOwner]
 
     def perform_create(self, serializer):
-        serializer.save(user=self.request.user)
+        instance = serializer.save(user=self.request.user)
+        # Log order_click event
+        EventLog.objects.create(
+            event_type='order_click',
+            user=self.request.user,
+            trip=instance.travel_listing
+        )
 
     def get_queryset(self):
         """

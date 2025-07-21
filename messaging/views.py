@@ -43,6 +43,15 @@ class ConversationViewSet(viewsets.ModelViewSet):
 
         conversation.participants.add(*user_ids)
 
+        # Log message_click event if related to a trip
+        if conversation.travel_listing:
+            from reporting.models import EventLog
+            EventLog.objects.create(
+                event_type='message_click',
+                user=self.request.user,
+                trip=conversation.travel_listing
+            )
+
     @action(detail=True, methods=['get'])
     def messages(self, request, pk=None):
         conversation = self.get_object()
