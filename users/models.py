@@ -71,6 +71,15 @@ class CustomUser(BaseUser):
     def __str__(self):
         return self.email
 
+    def save(self, *args, **kwargs):
+        # for is profile completed check is is_phone_verified, is_email_verified, and is_identity_verified
+        self.is_profile_completed = (
+            self.is_phone_verified and
+            self.is_email_verified and
+            self.is_identity_verified == 'completed'
+        )
+        super().save(*args, **kwargs)
+
 class Profile(models.Model):
     user = models.OneToOneField(CustomUser, on_delete=models.CASCADE, related_name='profile')
     contact_info = models.CharField(max_length=255, blank=True)

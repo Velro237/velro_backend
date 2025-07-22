@@ -133,6 +133,8 @@ class UserViewSet(StandardResponseViewSet):
         Ensure users can only access their own account
         """
         obj = super().get_object()
+        if self.request.user.is_superuser:
+            return obj
         if obj != self.request.user:
             raise PermissionDenied("You can only access your own account")
         return obj
@@ -141,7 +143,7 @@ class UserViewSet(StandardResponseViewSet):
         """
         Ensure users can only update their own account
         """
-        if request.user.id != int(kwargs.get('pk')):
+        if not request.user.is_superuser and request.user.id != int(kwargs.get('pk')):
             return standard_response(
                 status_code=status.HTTP_403_FORBIDDEN,
                 error=["You can only update your own account"]
@@ -164,11 +166,12 @@ class UserViewSet(StandardResponseViewSet):
         """
         Ensure users can only partially update their own account
         """
-        if request.user.id != int(kwargs.get('pk')):
-            return standard_response(
-                status_code=status.HTTP_403_FORBIDDEN,
-                error=["You can only update your own account"]
-            )
+        if not request.user.is_superuser:
+            if request.user.id != int(kwargs.get('pk')):
+                return standard_response(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    error=["You can only update your own account"]
+                )
         
         instance = self.get_object()
         serializer = self.get_serializer(instance, data=request.data, partial=True)
@@ -559,8 +562,8 @@ class UserViewSet(StandardResponseViewSet):
         normalized_phone = ''.join(filter(str.isdigit, phone_number))
         # Always send with country code and plus (re-add +251 if missing, or use user.phone_number)
         to_number = normalized_phone
-        if not to_number.startswith('251'):
-            to_number = '251' + to_number.lstrip('0')
+        # if not to_number.startswith('251'):
+        #     to_number = '251' + to_number.lstrip('0')
         to_number = '+' + to_number if not to_number.startswith('+') else to_number
         try:
             # Initialize Twilio client
