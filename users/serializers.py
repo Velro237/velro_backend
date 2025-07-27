@@ -175,13 +175,7 @@ class UserProfileSerializer(serializers.ModelSerializer):
         model = User
         fields = ('id', 'email', 'username', 'first_name', 'last_name', 'phone_number',
                  'is_email_verified', 'is_phone_verified', 'is_identity_verified',
-                 'is_profile_completed', 'is_facebook_verified', 'profile', 'verification_status',
-                 'full_name', 'gender', 'date_of_birth', 'nationality', 'country_of_residence',
-                 'kyc_method', 'two_factor_enabled', 'device_fingerprint', 'ip_address_last_login',
-                 'app_version', 'device_os', 'referral_code_used', 'last_active',
-                 'total_trips_created', 'total_offer_sent', 'total_offer_received',
-                 'total_completed_deliveries', 'average_rating', 'total_rating_received',
-                 'preferred_payment_method', 'notification_setting')
+                 'is_profile_completed', 'is_facebook_verified', 'profile', 'verification_status')
         read_only_fields = ('id', 'email', 'is_email_verified', 'is_phone_verified',
                           'is_identity_verified', 'is_profile_completed', 'is_facebook_verified')
 
