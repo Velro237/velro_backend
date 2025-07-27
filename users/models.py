@@ -46,7 +46,12 @@ IDENTITY_VERIFICATION_CHOICES = [
     ('rejected', 'Rejected'),
     ('completed', 'Completed'),
 ]
+# add the following field, don't remove eisting fields fullname(get from first_name and last_name), gender, date_of_birth, nationality, country_of_residence, kyc_method(like pasport + selfie), two_factor_enabled, device_fingerprint, ip_address_last_login, app_verions, device_os, referral_code_used, last_active, 
+# total_trips_created, total_offer_sent, total_offer_received, total_completed_deliveries, average_rating, total_rating_recived, prefered_payment_method:["Orange Money","Revoult", "Cash"],
+# notification_setting: {pushnotiifcation: True, email_notification:false}
 
+# for kyc_status use is profile_completed field, also thier no difference between kyc_status and and verified_travler, if the use profile_completed field then it will be used for both kyc_status is completed 
+# alos for total_trips
 class CustomUser(BaseUser):
     email = models.EmailField(unique=True)
     phone_number = models.CharField(max_length=15, unique=True)
@@ -95,6 +100,29 @@ class Profile(models.Model):
     front_side_identity_card_url = models.CharField(max_length=255, blank=True, null=True)
     back_side_identity_card_url = models.CharField(max_length=255, blank=True, null=True)
     selfie_photo_url = models.CharField(max_length=255, blank=True, null=True)
+
+    full_name = models.CharField(max_length=255, blank=True)
+    gender = models.CharField(max_length=20, blank=True)
+    date_of_birth = models.DateField(null=True, blank=True)
+    nationality = models.CharField(max_length=255, blank=True)
+    country_of_residence = models.CharField(max_length=255, blank=True)
+    kyc_method = models.CharField(max_length=255, blank=True)
+    two_factor_enabled = models.BooleanField(default=False)
+    device_fingerprint = models.CharField(max_length=255, blank=True)
+    ip_address_last_login = models.CharField(max_length=255, blank=True)
+    app_version = models.CharField(max_length=255, blank=True)
+    device_os = models.CharField(max_length=255, blank=True)
+    referral_code_used = models.CharField(max_length=255, blank=True)
+    last_active = models.DateTimeField(null=True, blank=True)
+    
+    total_trips_created = models.IntegerField(default=0)
+    total_offer_sent = models.IntegerField(default=0)
+    total_offer_received = models.IntegerField(default=0)
+    total_completed_deliveries = models.IntegerField(default=0)
+    average_rating = models.FloatField(default=0)
+    total_rating_received = models.IntegerField(default=0)
+    preferred_payment_method = models.CharField(max_length=255, blank=True)
+    notification_setting = models.JSONField(default=dict)
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

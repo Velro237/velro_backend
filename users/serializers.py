@@ -76,14 +76,49 @@ class ProfileSerializer(serializers.ModelSerializer):
     class Meta:
         model = Profile
         fields = (
-            'id',  # <-- Add this line to include the profile id
-            'profile_picture_url', 'profile_picture', 'contact_info', 'languages', 'travel_history', 
-            'preferences', 'selfie_photo_url', 'selfie_photo', 'address',
-            'city_of_residence', 'city_of_residence_id',
-            'id_type', 'id_type_id',
-            'issue_country', 'issue_country_id',
-            'front_side_identity_card_url', 'front_side_identity_card', 'back_side_identity_card_url', 'back_side_identity_card',
-            'created_at', 'updated_at'
+            'id',  
+            'full_name',
+            'gender',
+            'date_of_birth',
+            'nationality',
+            'country_of_residence',
+            'kyc_method',
+            'two_factor_enabled',
+            'device_fingerprint',
+            'ip_address_last_login',
+            'app_version',
+            'device_os',
+            'referral_code_used',
+            'last_active',
+            'total_trips_created',
+            'total_offer_sent',
+            'total_offer_received',
+            'total_completed_deliveries',
+            'average_rating',
+            'total_rating_received',
+            'preferred_payment_method',
+            'notification_setting',
+            'profile_picture',
+            'profile_picture_url',
+            'contact_info', 
+            'languages', 
+            'travel_history', 
+            'preferences', 
+            'selfie_photo_url', 
+            'selfie_photo', 
+            'address',
+            'city_of_residence', 
+            'city_of_residence_id',
+            'id_type', 
+            'id_type_id',
+            'issue_country', 
+            'issue_country_id',
+            'front_side_identity_card_url', 
+            'front_side_identity_card', 
+            'back_side_identity_card_url', 
+            'back_side_identity_card',
+            'created_at', 
+            'updated_at'
         )
         read_only_fields = ('created_at', 'updated_at', 'city_of_residence', 'id_type', 'issue_country')
     
@@ -140,7 +175,13 @@ class UserProfileSerializer(serializers.ModelSerializer):
         model = User
         fields = ('id', 'email', 'username', 'first_name', 'last_name', 'phone_number',
                  'is_email_verified', 'is_phone_verified', 'is_identity_verified',
-                 'is_profile_completed', 'is_facebook_verified', 'profile', 'verification_status')
+                 'is_profile_completed', 'is_facebook_verified', 'profile', 'verification_status',
+                 'full_name', 'gender', 'date_of_birth', 'nationality', 'country_of_residence',
+                 'kyc_method', 'two_factor_enabled', 'device_fingerprint', 'ip_address_last_login',
+                 'app_version', 'device_os', 'referral_code_used', 'last_active',
+                 'total_trips_created', 'total_offer_sent', 'total_offer_received',
+                 'total_completed_deliveries', 'average_rating', 'total_rating_received',
+                 'preferred_payment_method', 'notification_setting')
         read_only_fields = ('id', 'email', 'is_email_verified', 'is_phone_verified',
                           'is_identity_verified', 'is_profile_completed', 'is_facebook_verified')
 
