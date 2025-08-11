@@ -124,7 +124,7 @@ class UserViewSet(StandardResponseViewSet):
         return User.objects.filter(is_superuser=False)
 
     def get_permissions(self):
-        if self.action in ['register', 'verify_otp', 'resend_otp', 'forgot_password', 'verify_phone_firebase']:
+        if self.action in ['register', 'verify_otp', 'resend_otp', 'forgot_password', 'verify_phone_firebase', 'validate_otp']:
             return [AllowAny()]
         return super().get_permissions()
 
