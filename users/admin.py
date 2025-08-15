@@ -57,6 +57,7 @@ class CustomUserAdmin(UserAdmin):
         super().save_model(request, obj, form, change)
         from datetime import datetime
 
+        # Check if is_identity_verified changed to completed
         if 'is_identity_verified' in form.changed_data and obj.is_identity_verified == 'completed':
             # Send verification notification to user
             notification_data = {
@@ -65,7 +66,7 @@ class CustomUserAdmin(UserAdmin):
                 'created_at': datetime.now().isoformat(),
 
             }
-            send_notification_to_user(obj.id, notification_data)
+            send_notification_to_user.delay(obj.id, notification_data)
         if obj.is_identity_verified == 'completed' and obj.is_phone_verified and obj.is_email_verified:
             # Update is_profile_completed if all verifications are done
             obj.is_profile_completed = True
