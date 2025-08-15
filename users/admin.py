@@ -9,7 +9,7 @@ class ProfileInline(admin.StackedInline):
     verbose_name_plural = 'Profile'
     fields = ('profile_picture_url', 'contact_info', 'languages', 'travel_history', 
               'preferences', 'front_side_identity_card_url', 'back_side_identity_card_url', 'selfie_photo_url', 
-              'address', 'created_at', 'updated_at')
+              'address', )
     readonly_fields = ('created_at', 'updated_at')
 
 class CustomUserAdmin(UserAdmin):
@@ -77,16 +77,16 @@ class ProfileAdmin(admin.ModelAdmin):
         'id', 'user', 'profile_picture_url', 'contact_info', 'languages', 'travel_history',
         'preferences', 'selfie_photo_url', 'address', 'city_of_residence', 'id_type',
         'issue_country', 'front_side_identity_card_url', 'back_side_identity_card_url',
-        'created_at', 'updated_at'
+        # 'created_at', 'updated_at'
     )
     list_filter = ('created_at', 'updated_at')
     search_fields = ('user__email', 'user__username', 'contact_info', 'address')
-    # readonly_fields = (
+    readonly_fields = (
     #     'user', 'profile_picture_url', 'contact_info', 'languages', 'travel_history',
     #     'preferences', 'selfie_photo_url', 'address', 'city_of_residence', 'id_type',
     #     'issue_country', 'front_side_identity_card_url', 'back_side_identity_card_url',
-    #     'created_at', 'updated_at'
-    # )
+        'created_at', 'updated_at'
+    )
     fieldsets = (
         ('User Information', {'fields': ('user',)}),
         ('Contact Information', {'fields': ('contact_info', 'address')}),
