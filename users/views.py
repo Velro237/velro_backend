@@ -64,6 +64,7 @@ class UserLoginView(APIView):
 
         # Check if the password is correct
         if not user.check_password(password):
+            print("Invalid password attempt for user:", user.username, "Email:", user.email)
             return standard_response(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 error=['Invalid credentials']

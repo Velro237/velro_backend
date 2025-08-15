@@ -43,7 +43,7 @@ class CustomUserAdmin(UserAdmin):
     def get_readonly_fields(self, request, obj=None):
         # Make all fields readonly except is_identity_verified
         all_fields = [
-            'email', 'username', 'password', 'first_name', 'last_name', 'phone_number',
+            # 'email', 'username', 'password', 'first_name', 'last_name', 'phone_number',
             'is_email_verified', 'is_phone_verified', 'is_profile_completed',
             'privacy_policy_accepted', 'date_privacy_accepted', 'is_active', 'is_staff',
             'is_superuser', 'groups', 'user_permissions', 'last_login', 'date_joined'

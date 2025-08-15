@@ -46,12 +46,7 @@ IDENTITY_VERIFICATION_CHOICES = [
     ('rejected', 'Rejected'),
     ('completed', 'Completed'),
 ]
-# add the following field, don't remove eisting fields fullname(get from first_name and last_name), gender, date_of_birth, nationality, country_of_residence, kyc_method(like pasport + selfie), two_factor_enabled, device_fingerprint, ip_address_last_login, app_verions, device_os, referral_code_used, last_active, 
-# total_trips_created, total_offer_sent, total_offer_received, total_completed_deliveries, average_rating, total_rating_recived, prefered_payment_method:["Orange Money","Revoult", "Cash"],
-# notification_setting: {pushnotiifcation: True, email_notification:false}
 
-# for kyc_status use is profile_completed field, also thier no difference between kyc_status and and verified_travler, if the use profile_completed field then it will be used for both kyc_status is completed 
-# alos for total_trips
 class CustomUser(BaseUser):
     email = models.EmailField(unique=True)
     phone_number = models.CharField(max_length=15, unique=True)
