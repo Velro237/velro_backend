@@ -1250,7 +1250,6 @@ class AppleSignInView(APIView):
                 error=[f'An error occurred: {str(e)}']
             )
 
-
 class IdTypeViewSet(StandardResponseViewSet):
     """
     API endpoint for ID types

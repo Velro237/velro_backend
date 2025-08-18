@@ -1,3 +1,4 @@
+from django.forms import ValidationError
 from django.shortcuts import render
 from rest_framework import viewsets, permissions
 from rest_framework.decorators import action
@@ -199,13 +200,126 @@ class PackageRequestViewSet(StandardResponseViewSet):
     permission_classes = [permissions.IsAuthenticated, IsPackageRequestOwnerOrTravelListingOwner]
 
     def perform_create(self, serializer):
+        # Save the instance with user
         instance = serializer.save(user=self.request.user)
+
         # Log order_click event
         EventLog.objects.create(
             event_type='order_click',
             user=self.request.user,
             trip=instance.travel_listing
         )
+
+        # ---- Auto-send request as message ----
+        travel_listing = instance.travel_listing
+        traveler = travel_listing.user
+
+        # Get or create the conversation
+        conversation, created = Conversation.objects.get_or_create(
+            package_request=instance,
+            defaults={'travel_listing': travel_listing}
+        )
+        if created:
+            conversation.participants.set([self.request.user, traveler])
+
+        # Build message
+        message_lines = ["Hi! I'd like to send the following items:"]
+        items = {
+            'phone': instance.number_of_phone,
+            'PC': instance.number_of_pc,
+            'tablet': instance.number_of_tablet,
+            'document': instance.number_of_document,
+            'full suitcase': instance.number_of_full_suitcase
+        }
+
+        has_items = False
+        for item, count in items.items():
+            if count > 0:
+                has_items = True
+                plural = 's' if count > 1 and 'suitcase' not in item else ''
+                message_lines.append(f"- {count} x {item}{plural}")
+
+        if instance.weight and Decimal(instance.weight) > 0:
+            has_items = True
+            message_lines.append(
+                f"- {instance.weight}kg of other items ({instance.package_description or 'not specified'})."
+            )
+
+        if not has_items:
+            raise ValidationError("Cannot create an empty request. Please specify items or weight.")
+
+        message_lines.append(f"\nTotal price: {instance.total_price} {travel_listing.currency}")
+        message_content = "\n".join(message_lines)
+
+        # Create message in DB
+        message = Message.objects.create(
+            conversation=conversation,
+            sender=self.request.user,
+            content=message_content
+        )
+
+        # Push message to channels (non-blocking)
+        try:
+            channel_layer = get_channel_layer()
+            message_dict = {
+                'id': message.id,
+                'content': message.content,
+                'sender': {
+                    'id': message.sender.id,
+                    'username': message.sender.username,
+                    'email': message.sender.email
+                },
+                'created_at': message.created_at.isoformat(),
+                'attachments': []
+            }
+            async_to_sync(channel_layer.group_send)(
+                f'chat_{conversation.id}',
+                {
+                    'type': 'chat_message',
+                    'message': message_dict
+                }
+            )
+        except Exception as e:
+            print(f"Channel send failed: {e}")
+
+        return instance, conversation, message  # 👈 Return them for create()
+
+    # def create(self, request, *args, **kwargs):
+    #     serializer = self.get_serializer(data=request.data)
+    #     serializer.is_valid(raise_exception=True)
+
+    #     # Save + auto-message
+    #     instance, conversation, message = self.perform_create(serializer)
+
+    #     # Build response payload
+    #     response_data = {
+    #         "package_request": PackageRequestSerializer(instance).data,
+    #         "conversation": {
+    #             "id": conversation.id,
+    #             "participants": [
+    #                 {"id": u.id, "username": u.username, "email": u.email}
+    #                 for u in conversation.participants.all()
+    #             ],
+    #             "created_at": conversation.created_at.isoformat(),
+    #         },
+    #         "message": {
+    #             "id": message.id,
+    #             "content": message.content,
+    #             "sender": {
+    #                 "id": message.sender.id,
+    #                 "username": message.sender.username,
+    #                 "email": message.sender.email
+    #             },
+    #             "created_at": message.created_at.isoformat(),
+    #             "attachments": []
+    #         }
+    #     }
+
+    #     print(response_data)
+    #     return self._standardize_response(
+    #         Response(response_data, status=status.HTTP_201_CREATED),
+    #         status_code=status.HTTP_201_CREATED
+    #     )
 
     def get_queryset(self):
         """
@@ -217,6 +331,98 @@ class PackageRequestViewSet(StandardResponseViewSet):
             Q(user=self.request.user) |  # User is the package request creator
             Q(travel_listing__user=self.request.user)  # User is the travel listing owner
         )
+    @action(detail=True, methods=['post'], url_path='send-request-message')
+    def send_request_in_message(self, request, pk=None):
+        """
+        Sends the package request details as a message to the traveler.
+        Creates a new conversation if one does not already exist.
+        Also sends the message in real time via Django Channels.
+        """
+        package_request = self.get_object()
+
+        # 1. Permission Check: Only the request owner can send the message.
+        if request.user != package_request.user:
+            return self._standardize_response(
+                Response(
+                    {"error": "You do not have permission to perform this action."},
+                    status=status.HTTP_403_FORBIDDEN
+                ),
+                status_code=status.HTTP_403_FORBIDDEN
+            )
+
+        travel_listing = package_request.travel_listing
+        traveler = travel_listing.user
+
+        # 2. Get or create the conversation.
+        conversation, created = Conversation.objects.get_or_create(
+            package_request=package_request,
+            defaults={'travel_listing': travel_listing}
+        )
+        if created:
+            conversation.participants.set([request.user, traveler])
+
+        # 3. Format the message content.
+        message_lines = ["Hi! I'd like to send the following items:"]
+        items = {
+            'phone': package_request.number_of_phone,
+            'PC': package_request.number_of_pc,
+            'tablet': package_request.number_of_tablet,
+            'document': package_request.number_of_document,
+            'full suitcase': package_request.number_of_full_suitcase
+        }
+
+        has_items = False
+        for item, count in items.items():
+            if count > 0:
+                has_items = True
+                plural = 's' if count > 1 and 'suitcase' not in item else ''
+                message_lines.append(f"- {count} x {item}{plural}")
+
+        if package_request.weight and Decimal(package_request.weight) > 0:
+            has_items = True
+            message_lines.append(f"- {package_request.weight}kg of other items ({package_request.package_description or 'not specified'}).")
+        
+        if not has_items:
+            return self._standardize_response(
+                Response(
+                    {"error": "Cannot send an empty request. Please specify items or weight."},
+                    status=status.HTTP_400_BAD_REQUEST
+                ),
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
+
+        message_lines.append(f"\nTotal price: {package_request.total_price} {travel_listing.currency}")
+        message_content = "\n".join(message_lines)
+
+        # 4. Create and send the message (DB).
+        message = Message.objects.create(
+            conversation=conversation,
+            sender=request.user,
+            content=message_content
+        )
+
+        # 5. Send the message in real time via Channels.
+        channel_layer = get_channel_layer()
+        message_dict = {
+            'id': message.id,
+            'content': message.content,
+            'sender': {
+                'id': message.sender.id,
+                'username': message.sender.username,
+                'email': message.sender.email
+            },
+            'created_at': message.created_at.isoformat(),
+            'attachments': []
+        }
+        async_to_sync(channel_layer.group_send)(
+            f'chat_{conversation.id}',
+            {
+                'type': 'chat_message',
+                'message': message_dict
+            }
+        )
+
+        return self._standardize_response(Response({"detail": "Request message sent successfully."}))
 
     @action(detail=False, methods=['get'])
     def my_requests(self, request):
@@ -375,98 +581,6 @@ class PackageRequestViewSet(StandardResponseViewSet):
         send_notification_to_user(package_request.user.id, notification_serializer.data)
         return self._standardize_response(Response(serializer.data))
 
-    @action(detail=True, methods=['post'], url_path='send-request-message')
-    def send_request_in_message(self, request, pk=None):
-        """
-        Sends the package request details as a message to the traveler.
-        Creates a new conversation if one does not already exist.
-        Also sends the message in real time via Django Channels.
-        """
-        package_request = self.get_object()
-
-        # 1. Permission Check: Only the request owner can send the message.
-        if request.user != package_request.user:
-            return self._standardize_response(
-                Response(
-                    {"error": "You do not have permission to perform this action."},
-                    status=status.HTTP_403_FORBIDDEN
-                ),
-                status_code=status.HTTP_403_FORBIDDEN
-            )
-
-        travel_listing = package_request.travel_listing
-        traveler = travel_listing.user
-
-        # 2. Get or create the conversation.
-        conversation, created = Conversation.objects.get_or_create(
-            package_request=package_request,
-            defaults={'travel_listing': travel_listing}
-        )
-        if created:
-            conversation.participants.set([request.user, traveler])
-
-        # 3. Format the message content.
-        message_lines = ["Hi! I'd like to send the following items:"]
-        items = {
-            'phone': package_request.number_of_phone,
-            'PC': package_request.number_of_pc,
-            'tablet': package_request.number_of_tablet,
-            'document': package_request.number_of_document,
-            'full suitcase': package_request.number_of_full_suitcase
-        }
-
-        has_items = False
-        for item, count in items.items():
-            if count > 0:
-                has_items = True
-                plural = 's' if count > 1 and 'suitcase' not in item else ''
-                message_lines.append(f"- {count} x {item}{plural}")
-
-        if package_request.weight and Decimal(package_request.weight) > 0:
-            has_items = True
-            message_lines.append(f"- {package_request.weight}kg of other items ({package_request.package_description or 'not specified'}).")
-        
-        if not has_items:
-            return self._standardize_response(
-                Response(
-                    {"error": "Cannot send an empty request. Please specify items or weight."},
-                    status=status.HTTP_400_BAD_REQUEST
-                ),
-                status_code=status.HTTP_400_BAD_REQUEST
-            )
-
-        message_lines.append(f"\nTotal price: {package_request.total_price} {travel_listing.currency}")
-        message_content = "\n".join(message_lines)
-
-        # 4. Create and send the message (DB).
-        message = Message.objects.create(
-            conversation=conversation,
-            sender=request.user,
-            content=message_content
-        )
-
-        # 5. Send the message in real time via Channels.
-        channel_layer = get_channel_layer()
-        message_dict = {
-            'id': message.id,
-            'content': message.content,
-            'sender': {
-                'id': message.sender.id,
-                'username': message.sender.username,
-                'email': message.sender.email
-            },
-            'created_at': message.created_at.isoformat(),
-            'attachments': []
-        }
-        async_to_sync(channel_layer.group_send)(
-            f'chat_{conversation.id}',
-            {
-                'type': 'chat_message',
-                'message': message_dict
-            }
-        )
-
-        return self._standardize_response(Response({"detail": "Request message sent successfully."}))
 
 class AlertViewSet(StandardResponseViewSet):
     """
