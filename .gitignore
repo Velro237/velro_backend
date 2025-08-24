@@ -19,7 +19,7 @@ db.sqlite3-wal
 # adrash-firebase.json
 firebase_phone_test.html
 
-index.html
+# index.html
 staticfiles/
 media
 home.html
