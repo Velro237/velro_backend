@@ -64,6 +64,7 @@ class UserLoginView(APIView):
 
         # Check if the password is correct
         if not user.check_password(password):
+            print("Invalid password attempt for user:", user.username, "Email:", user.email)
             return standard_response(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 error=['Invalid credentials']
@@ -124,7 +125,7 @@ class UserViewSet(StandardResponseViewSet):
         return User.objects.filter(is_superuser=False)
 
     def get_permissions(self):
-        if self.action in ['register', 'verify_otp', 'resend_otp', 'forgot_password', 'verify_phone_firebase']:
+        if self.action in ['register', 'verify_otp', 'resend_otp', 'forgot_password', 'verify_phone_firebase', 'validate_otp']:
             return [AllowAny()]
         return super().get_permissions()
 
@@ -308,7 +309,7 @@ class UserViewSet(StandardResponseViewSet):
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 error=[f'Failed to send OTP: {str(e)}']
             )
-
+    
     @action(detail=False, methods=['post'])
     def forgot_password(self, request):
         verification_method = request.data.get('verification_method')  # 'email' or 'phone'
@@ -476,6 +477,7 @@ class UserViewSet(StandardResponseViewSet):
 
         try:
             user = User.objects.get(id=user_id)
+       
         except User.DoesNotExist:
             return standard_response(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -534,6 +536,7 @@ class UserViewSet(StandardResponseViewSet):
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                     error=[f'An error occurred: {str(e)}']
                 )
+        
         else:
             return standard_response(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -548,7 +551,90 @@ class UserViewSet(StandardResponseViewSet):
             data={'message': 'Password reset successful'},
             status_code=status.HTTP_200_OK
         )
+    
+    
+    ##################################################
+    ##################################################            
+    # endpoint to send otp code to email or phone number and validate it
+    # extra action to validate that the opt send from the frontend is exist and not used
+    @action(detail=False, methods=['post'])
+    def validate_otp(self, request):
+        user_id = request.data.get('user_id')
+        verification_method = request.data.get('verification_method')  # 'email' or 'phone'
+        verification_code = request.data.get('verification_code')
 
+        if not all([user_id, verification_method, verification_code]):
+            return standard_response(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                error=['All fields are required: user_id, verification_method, verification_code']
+            )
+
+        try:
+            user = User.objects.get(id=user_id)
+        except User.DoesNotExist:
+            return standard_response(
+                status_code=status.HTTP_404_NOT_FOUND,
+                error=['User not found']
+            )
+
+        if verification_method == 'email':
+            try:
+                otp = OTP.objects.get(
+                    user_id=user_id,
+                    code=verification_code,
+                    purpose='password_reset',
+                    is_used=False,
+                    created_at__gte=timezone.now() - timezone.timedelta(minutes=10)
+                )
+            except OTP.DoesNotExist:
+                return standard_response(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    error=['Invalid or expired OTP']
+                )
+
+            return standard_response(
+                data={'message': 'OTP is valid'},
+                status_code=status.HTTP_200_OK
+            )
+
+        elif verification_method == 'phone':
+            try:
+                # Initialize Twilio client
+                client = Client(settings.TWILIO_ACCOUNT_SID, settings.TWILIO_AUTH_TOKEN)
+                
+                # Verify the code
+                verification_check = client.verify.v2.services(settings.TWILIO_VERIFY_SERVICE) \
+                    .verification_checks \
+                    .create(to=user.phone_number, code=verification_code)
+
+                if verification_check.status != 'approved':
+                    return standard_response(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        error=['Invalid verification code']
+                    )
+
+                return standard_response(
+                    data={'message': 'OTP is valid'},
+                    status_code=status.HTTP_200_OK
+                )
+
+            except TwilioRestException as e:
+                return standard_response(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    error=[f'Verification failed: {str(e)}']
+                )
+            except Exception as e:
+                return standard_response(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    error=[f'An error occurred: {str(e)}']
+                )
+        else:
+            return standard_response(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                error=['Invalid verification method. Use "email" or "phone"']
+            )
+    ##################################################
+    ##################################################
     @action(detail=False, methods=['post'])
     def send_phone_otp(self, request):
         user = request.user
@@ -1163,7 +1249,6 @@ class AppleSignInView(APIView):
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 error=[f'An error occurred: {str(e)}']
             )
-
 
 class IdTypeViewSet(StandardResponseViewSet):
     """
