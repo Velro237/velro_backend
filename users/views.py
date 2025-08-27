@@ -13,11 +13,14 @@ from .serializers import (
     UserRegistrationSerializer, UserProfileSerializer, ProfileSerializer,
     OTPSerializer, PasswordChangeSerializer, PrivacyPolicyAcceptanceSerializer,
     UserSerializer, OTPVerificationSerializer, ResendOTPSerializer, ForgotPasswordSerializer,
-    ResetPasswordSerializer, SetPasswordSerializer, TelegramUserRegistrationSerializer, IdTypeSerializer
+    ResetPasswordSerializer, SetPasswordSerializer, TelegramUserRegistrationSerializer, IdTypeSerializer,
+    DiditIdVerificationSerializer, DiditPhoneSendSerializer, DiditPhoneCheckSerializer
 )
 from .utils import send_verification_email
 import random
 import string
+import requests
+import os
 from config.views import StandardResponseViewSet
 from config.utils import standard_response
 from django.db import models
@@ -364,38 +367,64 @@ class UserViewSet(StandardResponseViewSet):
                     )
 
                 try:
-                    # Initialize Twilio client
-                    client = Client(settings.TWILIO_ACCOUNT_SID, settings.TWILIO_AUTH_TOKEN)
-                    # Always send with country code and plus (re-add +251 if missing, or use user.phone_number)
-                    to_number = user.phone_number
-                    if not to_number.startswith('+'):
-                        to_number = '+' + to_number
-                    # Send verification code via Twilio
-                    verification = client.verify.v2.services(settings.TWILIO_VERIFY_SERVICE) \
-                        .verifications \
-                        .create(to=to_number, channel='sms')
-
-                    # Create OTP record in database
-                    OTP.objects.create(
-                        user=user,
-                        code='',  # We don't store the actual code as Twilio handles it
-                        purpose='password_reset'
+                    # Format phone number with E.164 format
+                    phone_number = user.phone_number
+                    if not phone_number.startswith('+'):
+                        phone_number = '+' + phone_number
+                        
+                    # Prepare request data and headers for Didit.me API
+                    payload = {
+                        "phone_number": phone_number
+                    }
+                    
+                    headers = {
+                        "Accept": "application/json",
+                        "Content-Type": "application/json",
+                        "X-Api-Key": settings.DIDIT_API_KEY
+                    }
+                    
+                    # Make the API request to send verification code
+                    response = requests.post(
+                        settings.DIDIT_PHONE_SEND_URL,
+                        headers=headers,
+                        json=payload
                     )
+                    
+                    # Process the response
+                    if response.status_code == 200:
+                        response_data = response.json()
+                        request_id = response_data.get('request_id')
+                        api_status = response_data.get('status')
+                        
+                        if api_status == "Success":
+                            # Create OTP record in database with request_id
+                            OTP.objects.create(
+                                user=user,
+                                code='',  # Leave code empty as we're using request_id
+                                request_id=request_id,  # Store request_id in proper field
+                                purpose='password_reset'
+                            )
+                            
+                            return standard_response(
+                                data={
+                                    'message': 'Password reset code sent successfully to your phone',
+                                    'user_id': user.id,
+                                    'request_id': request_id
+                                },
+                                status_code=status.HTTP_200_OK
+                            )
+                        else:
+                            reason = response_data.get('reason', 'Unknown reason')
+                            return standard_response(
+                                status_code=status.HTTP_400_BAD_REQUEST,
+                                error=[f'Failed to send verification code: {reason}']
+                            )
+                    else:
+                        return standard_response(
+                            status_code=status.HTTP_400_BAD_REQUEST,
+                            error=[f'API returned error: {response.text}']
+                        )
 
-                    return standard_response(
-                        data={
-                            'message': 'Password reset OTP sent successfully to your phone',
-                            'user_id': user.id,
-                            'verification_sid': verification.sid
-                        },
-                        status_code=status.HTTP_200_OK
-                    )
-
-                except TwilioRestException as e:
-                    return standard_response(
-                        status_code=status.HTTP_400_BAD_REQUEST,
-                        error=[f'Failed to send OTP: {str(e)}']
-                    )
                 except Exception as e:
                     return standard_response(
                         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -503,32 +532,54 @@ class UserViewSet(StandardResponseViewSet):
 
         elif verification_method == 'phone':
             try:
-                # Initialize Twilio client
-                client = Client(settings.TWILIO_ACCOUNT_SID, settings.TWILIO_AUTH_TOKEN)
+                # Format phone number with E.164 format
+                phone_number = user.phone_number
+                if not phone_number.startswith('+'):
+                    phone_number = '+' + phone_number
                 
-                # Verify the code
-                verification_check = client.verify.v2.services(settings.TWILIO_VERIFY_SERVICE) \
-                    .verification_checks \
-                    .create(to=user.phone_number, code=verification_code)
-
-                if verification_check.status != 'approved':
+                # Prepare request data and headers for Didit.me API
+                payload = {
+                    "phone_number": phone_number,
+                    "code": verification_code
+                }
+                
+                headers = {
+                    "Accept": "application/json",
+                    "Content-Type": "application/json",
+                    "X-Api-Key": settings.DIDIT_API_KEY
+                }
+                
+                # Make the API request to verify code
+                response = requests.post(
+                    settings.DIDIT_PHONE_CHECK_URL,
+                    headers=headers,
+                    json=payload
+                )
+                
+                # Process the response
+                if response.status_code == 200:
+                    verification_data = response.json()
+                    status_result = verification_data.get('status')
+                    
+                    if status_result != "Approved":
+                        message = verification_data.get('message', 'Verification failed')
+                        return standard_response(
+                            status_code=status.HTTP_400_BAD_REQUEST,
+                            error=[message]
+                        )
+                        
+                    # Mark OTP as used
+                    OTP.objects.filter(
+                        user=user,
+                        purpose='password_reset',
+                        is_used=False
+                    ).update(is_used=True)
+                else:
                     return standard_response(
                         status_code=status.HTTP_400_BAD_REQUEST,
-                        error=['Invalid verification code']
+                        error=[f'Verification API returned error: {response.text}']
                     )
-
-                # Mark OTP as used
-                OTP.objects.filter(
-                    user=user,
-                    purpose='password_reset',
-                    is_used=False
-                ).update(is_used=True)
-
-            except TwilioRestException as e:
-                return standard_response(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    error=[f'Verification failed: {str(e)}']
-                )
+                    
             except Exception as e:
                 return standard_response(
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -551,104 +602,172 @@ class UserViewSet(StandardResponseViewSet):
 
     @action(detail=False, methods=['post'])
     def send_phone_otp(self, request):
+        """
+        Send a verification code to phone number using Didit.me API
+        """
+        serializer = DiditPhoneSendSerializer(data=request.data)
+        if not serializer.is_valid():
+            return standard_response(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                error=[f"{field}: {error[0]}" for field, error in serializer.errors.items()]
+            )
+            
         user = request.user
-        phone_number = request.data.get('phone_number')
-        if not phone_number:
-            return standard_response(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                error=['Phone number is required']
-            )
-        # Normalize phone number
-        normalized_phone = ''.join(filter(str.isdigit, phone_number))
-        # Always send with country code and plus (re-add +251 if missing, or use user.phone_number)
-        to_number = normalized_phone
-        # if not to_number.startswith('251'):
-        #     to_number = '251' + to_number.lstrip('0')
-        to_number = '+' + to_number if not to_number.startswith('+') else to_number
+        phone_number = serializer.validated_data['phone_number']
+        
+        # Call Didit.me API to send verification code
         try:
-            # Initialize Twilio client
-            client = Client(settings.TWILIO_ACCOUNT_SID, settings.TWILIO_AUTH_TOKEN)
-            # Send verification code via Twilio
-            verification = client.verify.v2.services(settings.TWILIO_VERIFY_SERVICE) \
-                .verifications \
-                .create(to=to_number, channel='sms')
-            # Create OTP record in database
-            otp = OTP.objects.create(
-                user=user,
-                code='',  # We don't store the actual code as Twilio handles it
-                purpose='phone_verification'
+            # Prepare request data and headers
+            payload = {
+                "phone_number": phone_number
+            }
+            
+            headers = {
+                "Accept": "application/json",
+                "Content-Type": "application/json",
+                "X-Api-Key": settings.DIDIT_API_KEY
+            }
+            
+            # Make the API request
+            response = requests.post(
+                settings.DIDIT_PHONE_SEND_URL,
+                headers=headers,
+                json=payload
             )
-            return standard_response(
-                data={
-                    'message': 'OTP sent successfully',
-                    'verification_sid': verification.sid
-                },
-                status_code=status.HTTP_200_OK
-            )
-        except TwilioRestException as e:
-            return standard_response(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                error=[f'Failed to send OTP: {str(e)}']
-            )
+            
+            # Process the response
+            if response.status_code == 200:
+                response_data = response.json()
+                request_id = response_data.get('request_id')
+                api_status = response_data.get('status')
+                
+                if api_status == "Success":
+                    # Create OTP record in database with request_id in separate field
+                    OTP.objects.create(
+                        user=user,
+                        code='',  # Leave code empty as we're using request_id
+                        request_id=request_id,  # Store request_id in the proper field
+                        purpose='phone_verification'
+                    )
+                    
+                    # Store the phone number in user's profile for later verification
+                    user.phone_number = phone_number
+                    user.save()
+                    
+                    return standard_response(
+                        data={
+                            'message': 'Verification code sent successfully',
+                            'request_id': request_id
+                        },
+                        status_code=status.HTTP_200_OK
+                    )
+                else:
+                    reason = response_data.get('reason', 'Unknown reason')
+                    return standard_response(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        error=[f"Failed to send verification code: {reason}"]
+                    )
+            else:
+                return standard_response(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    error=[f"API returned error: {response.text}"]
+                )
+                
         except Exception as e:
             return standard_response(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                error=[f'An error occurred: {str(e)}']
+                error=[f"An error occurred during phone verification: {str(e)}"]
             )
 
     @action(detail=False, methods=['post'])
     def verify_phone_otp(self, request):
-        user = request.user
-        phone_number = request.data.get('phone_number')
-        verification_code = request.data.get('verification_code')
-
-        if not phone_number or not verification_code:
+        """
+        Verify the phone verification code using Didit.me API
+        """
+        serializer = DiditPhoneCheckSerializer(data=request.data)
+        if not serializer.is_valid():
             return standard_response(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                error=['Phone number and verification code are required']
+                error=[f"{field}: {error[0]}" for field, error in serializer.errors.items()]
             )
-
-        try:
-            # Initialize Twilio client
-            client = Client(settings.TWILIO_ACCOUNT_SID, settings.TWILIO_AUTH_TOKEN)
             
-            # Verify the code
-            verification_check = client.verify.v2.services(settings.TWILIO_VERIFY_SERVICE) \
-                .verification_checks \
-                .create(to=phone_number, code=verification_code)
-
-            if verification_check.status == 'approved':
-                # Update user's phone verification status
-                user.is_phone_verified = True
-                user.phone_number = phone_number
-                user.save()
-
-                # Mark OTP as used
-                OTP.objects.filter(
-                    user=user,
-                    purpose='phone_verification',
-                    is_used=False
-                ).update(is_used=True)
-
-                return standard_response(
-                    data={'message': 'Phone number verified successfully'},
-                    status_code=status.HTTP_200_OK
-                )
+        user = request.user
+        phone_number = serializer.validated_data['phone_number']
+        verification_code = serializer.validated_data['code']
+        
+        # Call Didit.me API to verify the code
+        try:
+            # Prepare request data and headers
+            payload = {
+                "phone_number": phone_number,
+                "code": verification_code
+            }
+            
+            headers = {
+                "Accept": "application/json",
+                "Content-Type": "application/json",
+                "X-Api-Key": settings.DIDIT_API_KEY
+            }
+            
+            # Make the API request
+            response = requests.post(
+                settings.DIDIT_PHONE_CHECK_URL,
+                headers=headers,
+                json=payload
+            )
+            
+            # Process the response
+            if response.status_code == 200:
+                verification_data = response.json()
+                request_id = verification_data.get('request_id')
+                status_result = verification_data.get('status')
+                
+                if status_result == "Approved":
+                    # Update user's phone verification status
+                    user.is_phone_verified = True
+                    user.phone_number = phone_number
+                    user.save()
+                    
+                    # Mark OTPs as used
+                    OTP.objects.filter(
+                        user=user,
+                        purpose='phone_verification',
+                        is_used=False
+                    ).update(is_used=True)
+                    
+                    # Get phone details from the response
+                    phone_details = verification_data.get('phone', {})
+                    
+                    return standard_response(
+                        data={
+                            'message': 'Phone number verified successfully',
+                            'verification_status': 'approved',
+                            'phone_details': {
+                                'country_code': phone_details.get('country_code'),
+                                'country_name': phone_details.get('country_name'),
+                                'carrier': phone_details.get('carrier', {}).get('name'),
+                                'carrier_type': phone_details.get('carrier', {}).get('type'),
+                                'verified_at': phone_details.get('verified_at')
+                            }
+                        },
+                        status_code=status.HTTP_200_OK
+                    )
+                else:
+                    message = verification_data.get('message', 'Verification failed')
+                    return standard_response(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        error=[message]
+                    )
             else:
                 return standard_response(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    error=['Invalid verification code']
+                    error=[f"Verification API returned error: {response.text}"]
                 )
-
-        except TwilioRestException as e:
-            return standard_response(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                error=[f'Verification failed: {str(e)}']
-            )
+                
         except Exception as e:
             return standard_response(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                error=[f'An error occurred: {str(e)}']
+                error=[f"An error occurred during phone verification: {str(e)}"]
             )
 
     @action(detail=False, methods=['post'], permission_classes=[AllowAny])
@@ -892,6 +1011,91 @@ class UserViewSet(StandardResponseViewSet):
             return standard_response(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 error=[f"An error occurred: {str(e)}"]
+            )
+                
+    @action(detail=False, methods=['post'])
+    def verify_id_document(self, request):
+        """
+        Verifies a user's identity document using the Didit.me API
+        Uploads front and back images of ID and processes the verification response
+        """
+        serializer = DiditIdVerificationSerializer(data=request.data)
+        if not serializer.is_valid():
+            return standard_response(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                error=[f"{field}: {error[0]}" for field, error in serializer.errors.items()]
+            )
+            
+        user = request.user
+        front_image = serializer.validated_data['front_image']
+        back_image = serializer.validated_data['back_image']
+        
+        # Call Didit.me API for verification
+        try:
+            # Prepare files for multipart upload
+            files = {
+                'front_image': (front_image.name, front_image.file, front_image.content_type),
+                'back_image': (back_image.name, back_image.file, back_image.content_type)
+            }
+            
+            # Prepare headers with API key
+            headers = {
+                "Accept": "application/json",
+                "X-Api-Key": settings.DIDIT_API_KEY
+            }
+            
+            # Make the API request
+            response = requests.post(
+                settings.DIDIT_VERIFICATION_URL,
+                headers=headers,
+                files=files
+            )
+            
+            # Process the response
+            if response.status_code == 200:
+                verification_data = response.json()
+                request_id = verification_data.get('request_id')
+                id_verification = verification_data.get('id_verification', {})
+                status_result = id_verification.get('status')
+                
+                # Update user's identity verification status based on API response
+                if status_result == 'Approved':
+                    user.is_identity_verified = 'completed'
+                elif status_result == 'Declined':
+                    user.is_identity_verified = 'rejected'
+                else:
+                    user.is_identity_verified = 'pending'
+                
+                user.save()
+                
+                # Return the verification data
+                return standard_response(
+                    data={
+                        'message': f'ID verification {status_result.lower()}',
+                        'verification_status': user.is_identity_verified,
+                        'request_id': request_id,
+                        'verification_details': {
+                            'document_type': id_verification.get('document_type'),
+                            'full_name': id_verification.get('full_name'),
+                            'issuing_state': id_verification.get('issuing_state_name'),
+                            'date_of_birth': id_verification.get('date_of_birth'),
+                            'expiration_date': id_verification.get('expiration_date'),
+                            'gender': id_verification.get('gender'),
+                            'warnings': id_verification.get('warnings', [])
+                        }
+                    },
+                    status_code=status.HTTP_200_OK
+                )
+            else:
+                return standard_response(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    error=[f"Verification API returned error: {response.text}"]
+                )
+                
+        except Exception as e:
+            return standard_response(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                error=[f"An error occurred during ID verification: {str(e)}"]
             )
 
 class ProfileViewSet(StandardResponseViewSet):

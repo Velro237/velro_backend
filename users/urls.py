@@ -18,5 +18,5 @@ urlpatterns = [
     path('token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
     path('google/signin/', GoogleSignInView.as_view(), name='google_signin'),
     path('apple/signin/', AppleSignInView.as_view(), name='apple_signin'),
-
+    # ID verification is handled by the UserViewSet's verify_id_document action at /users/verify_id_document/
 ]

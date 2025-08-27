@@ -245,6 +245,12 @@ CLOUDINARY_CLOUD_NAME = os.getenv('CLOUDINARY_CLOUD_NAME')
 CLOUDINARY_API_KEY = os.getenv('CLOUDINARY_API_KEY')
 CLOUDINARY_API_SECRET = os.getenv('CLOUDINARY_API_SECRET')
 
+# Didit.me API settings
+DIDIT_API_KEY = os.getenv('DIDIT_API_KEY', '')
+DIDIT_VERIFICATION_URL = os.getenv('DIDIT_VERIFICATION_URL', 'https://verification.didit.me/v2/id-verification/')
+DIDIT_PHONE_SEND_URL = 'https://verification.didit.me/v2/phone/send/'
+DIDIT_PHONE_CHECK_URL = 'https://verification.didit.me/v2/phone/check/'
+
 # Configure WhiteNoise
 STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 

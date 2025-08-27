@@ -143,6 +143,7 @@ def save_user_profile(sender, instance, created, **kwargs):
 class OTP(models.Model):
     user = models.ForeignKey(CustomUser, on_delete=models.CASCADE, related_name='otps')
     code = models.CharField(max_length=6)
+    request_id = models.CharField(max_length=100, blank=True, null=True, help_text="Stores external API request ID")
     created_at = models.DateTimeField(auto_now_add=True)
     is_used = models.BooleanField(default=False)
     purpose = models.CharField(max_length=20, choices=[

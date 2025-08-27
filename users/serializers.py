@@ -15,7 +15,7 @@ class UserSerializer(serializers.ModelSerializer):
     """
     class Meta:
         model = User
-        fields = ['id', 'username', 'email', 'phone_number', 'first_name', 'last_name', 'is_active', 'date_joined', 'profile']
+        fields = ['id', 'username', 'email', 'phone_number', 'first_name', 'last_name', 'is_active', 'date_joined', 'profile', 'is_identity_verified', 'is_phone_verified']
         read_only_fields = ['id', 'date_joined']
 
 class UserRegistrationSerializer(serializers.ModelSerializer):
@@ -370,4 +370,27 @@ class TelegramUserRegistrationSerializer(serializers.ModelSerializer):
         )
         user.set_password(validated_data['password'])
         user.save()
-        return user 
+        return user
+
+class DiditIdVerificationSerializer(serializers.Serializer):
+    front_image = serializers.ImageField(required=True)
+    back_image = serializers.ImageField(required=True)
+    
+class DiditPhoneSendSerializer(serializers.Serializer):
+    phone_number = serializers.CharField(required=True, help_text="Phone number in E.164 format (e.g. +14155552671)")
+    
+    def validate_phone_number(self, value):
+        # Basic E.164 validation - must start with + followed by digits
+        if not value.startswith('+') or not value[1:].isdigit():
+            raise serializers.ValidationError("Phone number must be in E.164 format (e.g. +14155552671)")
+        return value
+        
+class DiditPhoneCheckSerializer(serializers.Serializer):
+    phone_number = serializers.CharField(required=True, help_text="Phone number in E.164 format (e.g. +14155552671)")
+    code = serializers.CharField(required=True, min_length=4, max_length=8)
+    
+    def validate_phone_number(self, value):
+        # Basic E.164 validation - must start with + followed by digits
+        if not value.startswith('+') or not value[1:].isdigit():
+            raise serializers.ValidationError("Phone number must be in E.164 format (e.g. +14155552671)")
+        return value
