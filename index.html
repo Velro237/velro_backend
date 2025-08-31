@@ -1,0 +1,491 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>P2P Kilo Sales - Chat Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            padding: 20px;
+        }
+
+        .chat-container {
+            height: 400px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            margin-bottom: 20px;
+            padding: 10px;
+            overflow-y: auto;
+        }
+
+        .message {
+            margin-bottom: 10px;
+            padding: 8px 12px;
+            border-radius: 4px;
+            max-width: 70%;
+        }
+
+        .message.sent {
+            background-color: #007bff;
+            color: white;
+            margin-left: auto;
+        }
+
+        .message.received {
+            background-color: #e9ecef;
+            color: black;
+        }
+
+        .message-input {
+            display: flex;
+            gap: 10px;
+        }
+
+        .message-input input {
+            flex: 1;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+
+        .message-input button {
+            padding: 8px 16px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        .message-input button:disabled {
+            background-color: #b0c4de;
+            cursor: not-allowed;
+        }
+
+        .message-input button:hover:not(:disabled) {
+            background-color: #0056b3;
+        }
+
+        .typing-indicator {
+            color: #666;
+            font-style: italic;
+            margin: 5px 0;
+        }
+
+        .connection-status {
+            margin-bottom: 10px;
+            padding: 5px;
+            border-radius: 4px;
+        }
+
+        .connection-status.connected {
+            background-color: #d4edda;
+            color: #155724;
+        }
+
+        .connection-status.disconnected {
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+
+        .status-bar {
+            margin-bottom: 10px;
+            color: #b94a48;
+            background: #f2dede;
+            border: 1px solid #eed3d7;
+            border-radius: 4px;
+            padding: 5px 10px;
+            display: none;
+        }
+
+        .file-upload {
+            margin-top: 10px;
+        }
+
+        .file-upload input[type="file"] {
+            display: none;
+        }
+
+        .file-upload label {
+            padding: 8px 16px;
+            background-color: #6c757d;
+            color: white;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        .file-upload label:hover {
+            background-color: #5a6268;
+        }
+
+        .attachment-preview {
+            margin-top: 10px;
+            display: none;
+        }
+
+        .attachment-preview img {
+            max-width: 200px;
+            max-height: 200px;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <h1>Chat Test</h1>
+        <div id="connectionStatus" class="connection-status disconnected">
+            Disconnected
+        </div>
+        <div id="statusBar" class="status-bar"></div>
+        <div class="chat-container" id="chatContainer"></div>
+        <div class="message-input">
+            <input type="text" id="messageInput" placeholder="Type a message...">
+            <button type="button" id="sendButton" onclick="sendMessage()" disabled>Send</button>
+            <div class="file-upload">
+                <label for="fileInput">Attach File</label>
+                <input type="file" id="fileInput" multiple>
+            </div>
+        </div>
+        <div class="attachment-preview" id="attachmentPreview"></div>
+    </div>
+    <script>
+        let socket;
+        let reconnectAttempts = 0;
+        const MAX_RECONNECT_ATTEMPTS = 5;
+        let messages = [];
+        let isSending = false;
+        let attachmentsToSend = [];
+        const BASE_API_URL = "https://p2pkilosales-backend.onrender.com";
+
+        // DOM elements
+        const chatContainer = document.getElementById('chatContainer');
+        const messageInput = document.getElementById('messageInput');
+        const connectionStatus = document.getElementById('connectionStatus');
+        const sendButton = document.getElementById('sendButton');
+        const statusBar = document.getElementById('statusBar');
+        const fileInput = document.getElementById('fileInput');
+        const attachmentPreview = document.getElementById('attachmentPreview');
+
+        // Utility functions
+        function getToken() {
+            let token = localStorage.getItem('jwt_token');
+            if (!token || isTokenExpired(token)) {
+                token = prompt('Please enter your JWT token:');
+                if (token) {
+                    localStorage.setItem('jwt_token', token);
+                } else {
+                    return null;
+                }
+            }
+            return token;
+        }
+
+        function isTokenExpired(token) {
+            try {
+                const payload = JSON.parse(atob(token.split('.')[1]));
+                const exp = payload.exp * 1000; // Convert to milliseconds
+                return Date.now() > exp;
+            } catch (e) {
+                console.error('Error parsing JWT:', e);
+                return true; // Assume expired if parsing fails
+            }
+        }
+
+        function clearToken() {
+            localStorage.removeItem('jwt_token');
+        }
+
+        function getConversationId() {
+            let conversationId = localStorage.getItem('conversation_id');
+            if (!conversationId) {
+                conversationId = prompt('Enter conversation ID:');
+                if (conversationId) {
+                    localStorage.setItem('conversation_id', conversationId);
+                }
+            }
+            return conversationId;
+        }
+
+        function showStatus(message, isError = true) {
+            statusBar.textContent = message;
+            statusBar.style.display = 'block';
+            statusBar.style.backgroundColor = isError ? '#f8d7da' : '#d4edda';
+            statusBar.style.color = isError ? '#721c24' : '#155724';
+        }
+
+        function clearStatus() {
+            statusBar.style.display = 'none';
+        }
+
+        // Message handling
+        function appendMessageToChat(message) {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${message.sender.id === getCurrentUserId() ? 'sent' : 'received'}`;
+            let content = `<strong>${message.sender.username}</strong><br>${message.content}`;
+            // Attachments display
+            if (message.attachments && message.attachments.length > 0) {
+                content += '<div class="attachments">';
+                message.attachments.forEach(att => {
+                    if (att.file_type.startsWith('image/')) {
+                        content += `<div><img src="${att.file_url}" alt="${att.file_name}" style="max-width:120px;max-height:120px;display:block;margin-top:5px;"/></div>`;
+                    } else {
+                        content += `<div><a href="${att.file_url}" target="_blank">${att.file_name}</a></div>`;
+                    }
+                });
+                content += '</div>';
+            }
+            messageDiv.innerHTML = content;
+            chatContainer.appendChild(messageDiv);
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+        }
+
+        function displayMessage(message) {
+            messages.push(message);
+            appendMessageToChat(message);
+        }
+
+        // Fetch previous messages for the conversation
+        async function fetchPreviousMessages(conversationId, token) {
+            try {
+                const response = await fetch(`${BASE_API_URL}/api/messaging/conversations/${conversationId}/messages/`, {
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+                if (!response.ok) {
+                    throw new Error('Failed to fetch messages');
+                }
+                const data = await response.json();
+                messages = data.results || [];
+                chatContainer.innerHTML = '';
+                messages.forEach(appendMessageToChat);
+            } catch (error) {
+                showStatus('Could not load previous messages: ' + error.message);
+            }
+        }
+
+        // WebSocket functions
+        function sendMessage() {
+            if (isSending) return;
+            if (!socket || socket.readyState !== WebSocket.OPEN) {
+                showStatus('Not connected to chat');
+                console.log('WebSocket state:', socket ? socket.readyState : 'No socket');
+                return;
+            }
+            const content = messageInput.value.trim();
+            if (!content && attachmentsToSend.length === 0) return;
+            isSending = true;
+            try {
+                const messageData = { type: 'message', content: content };
+                if (attachmentsToSend.length > 0) {
+                    messageData.attachments = attachmentsToSend;
+                }
+                console.log('Sending message:', messageData, 'WebSocket state:', socket.readyState);
+                socket.send(JSON.stringify(messageData));
+                resetMessageInput();
+                clearAttachmentPreview();
+            } catch (error) {
+                console.error('Error sending message:', error);
+                showStatus('Error sending message: ' + error.message);
+            } finally {
+                isSending = false;
+            }
+        }
+
+        function resetMessageInput() {
+            messageInput.value = '';
+            attachmentsToSend = [];
+        }
+
+        // File attachment logic
+        fileInput.addEventListener('change', handleFileSelect);
+
+        function handleFileSelect(event) {
+            const files = Array.from(event.target.files);
+            attachmentsToSend = [];
+            attachmentPreview.innerHTML = '';
+            if (files.length > 0) {
+                attachmentPreview.style.display = 'block';
+            } else {
+                attachmentPreview.style.display = 'none';
+            }
+            let filesProcessed = 0;
+            files.forEach(file => {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    const base64Data = e.target.result.split(',')[1];
+                    attachmentsToSend.push({
+                        name: file.name,
+                        type: file.type,
+                        data: base64Data
+                    });
+                    // Preview
+                    if (file.type.startsWith('image/')) {
+                        const img = document.createElement('img');
+                        img.src = e.target.result;
+                        img.alt = file.name;
+                        img.style.maxWidth = '120px';
+                        img.style.maxHeight = '120px';
+                        img.style.marginRight = '8px';
+                        attachmentPreview.appendChild(img);
+                    } else {
+                        const link = document.createElement('div');
+                        link.textContent = file.name;
+                        attachmentPreview.appendChild(link);
+                    }
+                    filesProcessed++;
+                    if (filesProcessed === files.length) {
+                        attachmentPreview.style.display = 'block';
+                    }
+                };
+                reader.readAsDataURL(file);
+            });
+        }
+
+        function clearAttachmentPreview() {
+            attachmentPreview.innerHTML = '';
+            attachmentPreview.style.display = 'none';
+            fileInput.value = '';
+        }
+
+        function connectWebSocket() {
+            clearStatus();
+            const token = getToken();
+            const conversationId = getConversationId();
+            if (!token || !conversationId) {
+                showStatus('JWT token and Conversation ID are required');
+                sendButton.disabled = true;
+                return;
+            }
+            if (isTokenExpired(token)) {
+                showStatus('JWT token is expired. Please provide a new token.');
+                clearToken();
+                sendButton.disabled = true;
+                return;
+            }
+            if (socket) {
+                socket.close();
+                socket = null;
+            }
+            const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsUrl = `$wss://p2pkilosales-backend.onrender.com/ws/chat/${conversationId}/?token=${token}`;
+            console.log('Attempting WebSocket connection to:', wsUrl);
+            showStatus('Connecting to chat...', false);
+            socket = new WebSocket(wsUrl);
+            sendButton.disabled = true;
+
+
+            socket.onopen = () => {
+                console.log('WebSocket connection established');
+                reconnectAttempts = 0;
+                connectionStatus.textContent = 'Connected';
+                connectionStatus.className = 'connection-status connected';
+                sendButton.disabled = false;
+                showStatus('Connected to chat', false);
+                // Redisplay existing messages
+                chatContainer.innerHTML = ''; // Clear current content
+                messages.forEach(appendMessageToChat);
+            };
+
+            socket.onclose = (event) => {
+                console.log('WebSocket closed:', event.code, event.reason);
+                connectionStatus.textContent = 'Disconnected';
+                connectionStatus.className = 'connection-status disconnected';
+                sendButton.disabled = true;
+                if (!event.wasClean) {
+                    reconnectAttempts++;
+                    const token = getToken();
+                    if (!token || isTokenExpired(token)) {
+                        showStatus('JWT token is expired. Please provide a new token.');
+                        clearToken();
+                        return;
+                    }
+                    const delay = Math.min(5000, reconnectAttempts * 1000);
+                    if (reconnectAttempts <= MAX_RECONNECT_ATTEMPTS) {
+                        showStatus(`Disconnected. Reconnecting in ${delay / 1000} seconds... (Attempt ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})`);
+                        setTimeout(connectWebSocket, delay);
+                    } else {
+                        showStatus('Failed to reconnect. Please refresh the page or provide a new token.');
+                    }
+                }
+            };
+
+            socket.onerror = (error) => {
+                console.error('WebSocket error:', error);
+                showStatus('WebSocket error occurred');
+            };
+
+            socket.onmessage = (event) => {
+                try {
+                    console.log('Raw message received:', event.data);
+                    const data = JSON.parse(event.data);
+                    console.log('Parsed message:', data);
+                    if (data.type === 'message') {
+                        console.log('Displaying message:', data.message);
+                        displayMessage(data.message);
+                    } else if (data.type === 'error') {
+                        showStatus(`Server error: ${data.message}`);
+                        if (data.message.toLowerCase().includes('token') || data.message.toLowerCase().includes('expired')) {
+                            clearToken();
+                            showStatus('JWT token is expired. Please provide a new token.');
+                        }
+                    } else {
+                        console.log('Unknown message type:', data);
+                    }
+                } catch (e) {
+                    console.error('Error processing message:', e);
+                    showStatus('Error processing message');
+                }
+            };
+        }
+
+        // Event listeners
+        messageInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                sendMessage();
+            }
+        });
+
+        // Initialize
+        function getCurrentUserId() {
+            const token = getToken();
+            if (token) {
+                try {
+                    const payload = JSON.parse(atob(token.split('.')[1]));
+                    return payload.user_id;
+                } catch (e) {
+                    console.error('Error parsing JWT:', e);
+                    return null;
+                }
+            }
+            return null;
+        }
+
+        // Start the connection when page loads
+        window.addEventListener('load', async function() {
+            const token = getToken();
+            const conversationId = getConversationId();
+            if (token && conversationId) {
+                await fetchPreviousMessages(conversationId, token);
+            }
+            connectWebSocket();
+        });
+    </script>
+</body>
+
+</html>

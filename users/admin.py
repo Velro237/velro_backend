@@ -9,7 +9,7 @@ class ProfileInline(admin.StackedInline):
     verbose_name_plural = 'Profile'
     fields = ('profile_picture_url', 'contact_info', 'languages', 'travel_history', 
               'preferences', 'front_side_identity_card_url', 'back_side_identity_card_url', 'selfie_photo_url', 
-              'address', 'created_at', 'updated_at')
+              'address', )
     readonly_fields = ('created_at', 'updated_at')
 
 class CustomUserAdmin(UserAdmin):
@@ -43,10 +43,10 @@ class CustomUserAdmin(UserAdmin):
     def get_readonly_fields(self, request, obj=None):
         # Make all fields readonly except is_identity_verified
         all_fields = [
-            'email', 'username', 'password', 'first_name', 'last_name', 'phone_number',
-            'is_email_verified', 'is_phone_verified', 'is_profile_completed',
-            'privacy_policy_accepted', 'date_privacy_accepted', 'is_active', 'is_staff',
-            'is_superuser', 'groups', 'user_permissions', 'last_login', 'date_joined'
+            # 'email', 'username', 'password', 'first_name', 'last_name', 'phone_number',
+            # 'is_email_verified', 'is_phone_verified', 'is_profile_completed',
+            # 'privacy_policy_accepted', 'date_privacy_accepted', 'is_active', 'is_staff',
+            # 'is_superuser', 'groups', 'user_permissions', 'last_login', 'date_joined'
         ]
         # Remove is_identity_verified from readonly
         readonly = [f for f in all_fields if f != 'is_identity_verified']
@@ -57,6 +57,7 @@ class CustomUserAdmin(UserAdmin):
         super().save_model(request, obj, form, change)
         from datetime import datetime
 
+        # Check if is_identity_verified changed to completed
         if 'is_identity_verified' in form.changed_data and obj.is_identity_verified == 'completed':
             # Send verification notification to user
             notification_data = {
@@ -65,7 +66,7 @@ class CustomUserAdmin(UserAdmin):
                 'created_at': datetime.now().isoformat(),
 
             }
-            send_notification_to_user(obj.id, notification_data)
+            # send_notification_to_user.delay(obj.id, notification_data)
         if obj.is_identity_verified == 'completed' and obj.is_phone_verified and obj.is_email_verified:
             # Update is_profile_completed if all verifications are done
             obj.is_profile_completed = True
@@ -77,16 +78,16 @@ class ProfileAdmin(admin.ModelAdmin):
         'id', 'user', 'profile_picture_url', 'contact_info', 'languages', 'travel_history',
         'preferences', 'selfie_photo_url', 'address', 'city_of_residence', 'id_type',
         'issue_country', 'front_side_identity_card_url', 'back_side_identity_card_url',
-        'created_at', 'updated_at'
+        # 'created_at', 'updated_at'
     )
     list_filter = ('created_at', 'updated_at')
     search_fields = ('user__email', 'user__username', 'contact_info', 'address')
-    # readonly_fields = (
+    readonly_fields = (
     #     'user', 'profile_picture_url', 'contact_info', 'languages', 'travel_history',
     #     'preferences', 'selfie_photo_url', 'address', 'city_of_residence', 'id_type',
     #     'issue_country', 'front_side_identity_card_url', 'back_side_identity_card_url',
-    #     'created_at', 'updated_at'
-    # )
+        'created_at', 'updated_at'
+    )
     fieldsets = (
         ('User Information', {'fields': ('user',)}),
         ('Contact Information', {'fields': ('contact_info', 'address')}),
