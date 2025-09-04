@@ -44,13 +44,44 @@ class TravelListingSerializer(serializers.ModelSerializer):
     destination_region_id = serializers.PrimaryKeyRelatedField(queryset=Region.objects.all(), source='destination_region', write_only=True)
     mode_of_transport = TransportTypeSerializer(read_only=True)
     mode_of_transport_id = serializers.PrimaryKeyRelatedField(queryset=TransportType.objects.all(), source='mode_of_transport', write_only=True)
+    
+    def validate(self, data):
+        """
+        Validate the data for travel listing creation/update based on fullSuitcaseOnly flag
+        """
+        fullSuitcaseOnly = data.get('fullSuitcaseOnly', False)
+        
+        # If fullSuitcaseOnly is enabled
+        if fullSuitcaseOnly:
+            # Price per suitcase must be provided
+            if 'price_full_suitcase' not in data or data.get('price_full_suitcase') is None:
+                raise serializers.ValidationError({
+                    "price_full_suitcase": "Price per suitcase is required when fullSuitcaseOnly is enabled."
+                })
+            
+            # Set standard values for fullSuitcaseOnly mode
+            data['maximum_weight_in_kg'] = 23.00
+            
+            # Zero out other pricing fields if they're in the data
+            for field in ['price_per_kg', 'price_per_document', 'price_per_phone', 
+                         'price_per_tablet', 'price_per_pc', 'price_per_file']:
+                if field in data:
+                    data[field] = 0.00
+        else:
+            # In normal mode, price_per_kg is required
+            if 'price_per_kg' not in data or data.get('price_per_kg') is None:
+                raise serializers.ValidationError({
+                    "price_per_kg": "Price per kg is required when not in fullSuitcaseOnly mode."
+                })
+            
+        return data
 
     class Meta:
         model = TravelListing
         fields = [
             'id', 'user', 'pickup', 'pickup_region_id', 'destination', 'destination_region_id',
             'travel_date', 'travel_time', 'mode_of_transport', 'mode_of_transport_id', 'maximum_weight_in_kg',
-            'notes', 'price_per_kg', 'price_per_document', 'price_per_phone',
+            'notes', 'fullSuitcaseOnly', 'price_per_kg', 'price_per_document', 'price_per_phone',
             'price_per_tablet', 'price_per_pc', 'price_per_file', 'price_full_suitcase', 'currency', 'status',
             'created_at', 'updated_at'
         ]
@@ -63,6 +94,9 @@ class TravelListingSerializer(serializers.ModelSerializer):
         validated_data['pickup_country'] = pickup_region.country
         validated_data['destination_region'] = destination_region
         validated_data['destination_country'] = destination_region.country
+        
+        # Note: Validation logic is now handled in the validate method
+        
         return super().create(validated_data)
 
     def update(self, instance, validated_data):
@@ -74,6 +108,10 @@ class TravelListingSerializer(serializers.ModelSerializer):
             destination_region = validated_data.pop('destination_region')
             instance.destination_region = destination_region
             instance.destination_country = destination_region.country
+            
+        # Note: Validation logic is now handled in the validate method
+        # Any update that changes fullSuitcaseOnly will trigger the validate method
+        
         return super().update(instance, validated_data)
 
     def to_representation(self, instance):
@@ -158,26 +196,34 @@ class PackageRequestSerializer(serializers.ModelSerializer):
 
         def get_value(field_name):
             return validated_data.get(field_name, getattr(instance, field_name, 0))
-
-        # Price per kg
-        weight = get_value('weight')
-        if weight and travel_listing.price_per_kg:
-            price += Decimal(weight) * Decimal(travel_listing.price_per_kg)
-
-        # Price per item
-        item_prices = {
-            'number_of_document': travel_listing.price_per_document,
-            'number_of_phone': travel_listing.price_per_phone,
-            'number_of_tablet': travel_listing.price_per_tablet,
-            'number_of_pc': travel_listing.price_per_pc,
-            'number_of_full_suitcase': travel_listing.price_full_suitcase,
-        }
-
-        for field, item_price in item_prices.items():
-            count = get_value(field)
-            if count and item_price:
-                price += Decimal(count) * Decimal(item_price)
-                
+            
+        if travel_listing.fullSuitcaseOnly:
+            # In fullSuitcaseOnly mode, only count full suitcases
+            num_suitcases = get_value('number_of_full_suitcase')
+            if num_suitcases and travel_listing.price_full_suitcase:
+                price += Decimal(num_suitcases) * Decimal(travel_listing.price_full_suitcase)
+        else:
+            # Normal mode - calculate based on weight and individual items
+            
+            # Price per kg
+            weight = get_value('weight')
+            if weight and travel_listing.price_per_kg:
+                price += Decimal(weight) * Decimal(travel_listing.price_per_kg)
+    
+            # Price per item
+            item_prices = {
+                'number_of_document': travel_listing.price_per_document,
+                'number_of_phone': travel_listing.price_per_phone,
+                'number_of_tablet': travel_listing.price_per_tablet,
+                'number_of_pc': travel_listing.price_per_pc,
+                'number_of_full_suitcase': travel_listing.price_full_suitcase,
+            }
+    
+            for field, item_price in item_prices.items():
+                count = get_value(field)
+                if count and item_price:
+                    price += Decimal(count) * Decimal(item_price)
+                    
         return price
 
     def create(self, validated_data):
