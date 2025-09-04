@@ -152,3 +152,23 @@ class OTP(models.Model):
 
     class Meta:
         ordering = ['-created_at']
+        
+class DiditVerificationSession(models.Model):
+    user = models.ForeignKey(CustomUser, on_delete=models.CASCADE, related_name='verification_sessions')
+    session_id = models.CharField(max_length=100, unique=True)
+    session_number = models.IntegerField(null=True, blank=True)
+    session_token = models.CharField(max_length=100, blank=True)
+    vendor_data = models.CharField(max_length=255, blank=True, null=True)
+    metadata = models.JSONField(default=dict, null=True, blank=True)
+    status = models.CharField(max_length=50, default='Not Started')
+    workflow_id = models.CharField(max_length=100, blank=True)
+    callback_url = models.URLField(blank=True)
+    verification_url = models.URLField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    def __str__(self):
+        return f"Verification session {self.session_id} for {self.user.email}"
+        
+    class Meta:
+        ordering = ['-created_at']

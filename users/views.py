@@ -8,13 +8,14 @@ from rest_framework.exceptions import PermissionDenied
 from django.contrib.auth import get_user_model, authenticate
 from django.utils import timezone
 from rest_framework_simplejwt.tokens import RefreshToken
-from .models import Profile, OTP, CustomUser, IdType
+from .models import Profile, OTP, CustomUser, IdType, DiditVerificationSession
 from .serializers import (
     UserRegistrationSerializer, UserProfileSerializer, ProfileSerializer,
     OTPSerializer, PasswordChangeSerializer, PrivacyPolicyAcceptanceSerializer,
     UserSerializer, OTPVerificationSerializer, ResendOTPSerializer, ForgotPasswordSerializer,
     ResetPasswordSerializer, SetPasswordSerializer, TelegramUserRegistrationSerializer, IdTypeSerializer,
-    DiditIdVerificationSerializer, DiditPhoneSendSerializer, DiditPhoneCheckSerializer
+    DiditIdVerificationSerializer, DiditPhoneSendSerializer, DiditPhoneCheckSerializer,
+    DiditVerificationSessionSerializer
 )
 from .utils import send_verification_email
 import random
@@ -128,7 +129,7 @@ class UserViewSet(StandardResponseViewSet):
         return User.objects.filter(is_superuser=False)
 
     def get_permissions(self):
-        if self.action in ['register', 'verify_otp', 'resend_otp', 'forgot_password', 'verify_phone_firebase', 'validate_otp']:
+        if self.action in ['register', 'verify_otp', 'resend_otp', 'forgot_password', 'verify_phone_firebase', 'validate_otp', 'check_verification_status', 'update_verification_status']:
             return [AllowAny()]
         return super().get_permissions()
 
@@ -1102,8 +1103,8 @@ class UserViewSet(StandardResponseViewSet):
     @action(detail=False, methods=['post'])
     def verify_id_document(self, request):
         """
-        Verifies a user's identity document using the Didit.me API
-        Uploads front and back images of ID and processes the verification response
+        Stores verification session data received from Didit.me API
+        Updates user verification status based on the session status
         """
         serializer = DiditIdVerificationSerializer(data=request.data)
         if not serializer.is_valid():
@@ -1113,75 +1114,182 @@ class UserViewSet(StandardResponseViewSet):
             )
             
         user = request.user
-        front_image = serializer.validated_data['front_image']
-        back_image = serializer.validated_data['back_image']
+        session_data = serializer.validated_data
         
-        # Call Didit.me API for verification
         try:
-            # Prepare files for multipart upload
-            files = {
-                'front_image': (front_image.name, front_image.file, front_image.content_type),
-                'back_image': (back_image.name, back_image.file, back_image.content_type)
-            }
-            
-            # Prepare headers with API key
-            headers = {
-                "Accept": "application/json",
-                "X-Api-Key": settings.DIDIT_API_KEY
-            }
-            
-            # Make the API request
-            response = requests.post(
-                settings.DIDIT_VERIFICATION_URL,
-                headers=headers,
-                files=files
+            # Store the session information in the database
+            verification_session = DiditVerificationSession.objects.create(
+                user=user,
+                session_id=session_data['session_id'],
+                session_number=session_data.get('session_number'),
+                session_token=session_data['session_token'],
+                vendor_data=session_data.get('vendor_data', ''),
+                metadata=session_data.get('metadata', {}),
+                status=session_data['status'],
+                workflow_id=session_data['workflow_id'],
+                callback_url=session_data.get('callback', ''),
+                verification_url=session_data.get('url', '')
             )
             
-            # Process the response
-            if response.status_code == 200:
-                verification_data = response.json()
-                request_id = verification_data.get('request_id')
-                id_verification = verification_data.get('id_verification', {})
-                status_result = id_verification.get('status')
-                
-                # Update user's identity verification status based on API response
-                if status_result == 'Approved':
-                    user.is_identity_verified = 'completed'
-                elif status_result == 'Declined':
-                    user.is_identity_verified = 'rejected'
-                else:
-                    user.is_identity_verified = 'pending'
-                
-                user.save()
-                
-                # Return the verification data
-                return standard_response(
-                    data={
-                        'message': f'ID verification {status_result.lower()}',
-                        'verification_status': user.is_identity_verified,
-                        'request_id': request_id,
-                        'verification_details': {
-                            'document_type': id_verification.get('document_type'),
-                            'full_name': id_verification.get('full_name'),
-                            'issuing_state': id_verification.get('issuing_state_name'),
-                            'date_of_birth': id_verification.get('date_of_birth'),
-                            'expiration_date': id_verification.get('expiration_date'),
-                            'gender': id_verification.get('gender'),
-                            'warnings': id_verification.get('warnings', [])
-                        }
-                    },
-                    status_code=status.HTTP_200_OK
-                )
+            # Update user's identity verification status based on session status
+            if session_data['status'].lower() == 'approved':
+                user.is_identity_verified = 'completed'
+            elif session_data['status'].lower() == 'declined' or session_data['status'].lower() == 'rejected':
+                user.is_identity_verified = 'rejected'
             else:
-                return standard_response(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    error=[f"Verification API returned error: {response.text}"]
-                )
+                user.is_identity_verified = 'pending'
+            
+            user.save()
+            
+            # Return the verification session data
+            return standard_response(
+                data={
+                    'message': f'ID verification session stored successfully',
+                    'verification_status': user.is_identity_verified,
+                    'session_id': verification_session.session_id,
+                    'session_details': DiditVerificationSessionSerializer(verification_session).data
+                },
+                status_code=status.HTTP_200_OK
+            )
                 
         except Exception as e:
             return standard_response(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                error=[f"An error occurred during ID verification: {str(e)}"]
+                error=[f"An error occurred during ID verification session storage: {str(e)}"]
+            )
+            
+    @action(detail=False, methods=['get'])
+    def check_verification_status(self, request):
+        """
+        Checks the status of a verification session by session_id
+        Updates user verification status if the session status has changed
+        """
+        session_id = request.query_params.get('session_id')
+        
+        if not session_id:
+            return standard_response(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                error=["session_id is required"]
+            )
+            
+        try:
+            # Find the verification session
+            try:
+                verification_session = DiditVerificationSession.objects.get(session_id=session_id)
+            except DiditVerificationSession.DoesNotExist:
+                return standard_response(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    error=[f"Verification session with id {session_id} not found"]
+                )
+                
+            # Optional: Call Didit.me API to get the latest status
+            # This could be added here if needed
+            
+            user = verification_session.user
+            
+            # Update user's verification status based on the session status
+            current_status = verification_session.status.lower()
+            
+            if current_status == 'approved':
+                user.is_identity_verified = 'completed'
+            elif current_status == 'declined' or current_status == 'rejected':
+                user.is_identity_verified = 'rejected'
+            else:
+                user.is_identity_verified = 'pending'
+                
+            user.save()
+            
+            return standard_response(
+                data={
+                    'verification_status': user.is_identity_verified,
+                    'session_status': verification_session.status,
+                    'session_details': DiditVerificationSessionSerializer(verification_session).data
+                },
+                status_code=status.HTTP_200_OK
+            )
+            
+        except Exception as e:
+            return standard_response(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                error=[f"An error occurred while checking verification status: {str(e)}"]
+            )
+            
+    @action(detail=False, methods=['post'])
+    def update_verification_status(self, request):
+        """
+        Updates a verification session status from a callback
+        """
+        session_id = request.data.get('session_id')
+        new_status = request.data.get('status')
+        
+        if not session_id or not new_status:
+            return standard_response(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                error=["session_id and status are required"]
+            )
+            
+        try:
+            # Find the verification session
+            try:
+                verification_session = DiditVerificationSession.objects.get(session_id=session_id)
+            except DiditVerificationSession.DoesNotExist:
+                return standard_response(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    error=[f"Verification session with id {session_id} not found"]
+                )
+                
+            # Update the session status
+            verification_session.status = new_status
+            verification_session.save()
+            
+            # Update user's verification status
+            user = verification_session.user
+            current_status = new_status.lower()
+            
+            if current_status == 'approved':
+                user.is_identity_verified = 'completed'
+            elif current_status == 'declined' or current_status == 'rejected':
+                user.is_identity_verified = 'rejected'
+            else:
+                user.is_identity_verified = 'pending'
+                
+            user.save()
+            
+            return standard_response(
+                data={
+                    'message': 'Verification status updated successfully',
+                    'verification_status': user.is_identity_verified,
+                    'session_status': verification_session.status
+                },
+                status_code=status.HTTP_200_OK
+            )
+            
+        except Exception as e:
+            return standard_response(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                error=[f"An error occurred while updating verification status: {str(e)}"]
+            )
+            
+    @action(detail=False, methods=['get'])
+    def verification_sessions(self, request):
+        """
+        Returns all verification sessions for the current user
+        """
+        try:
+            user = request.user
+            sessions = DiditVerificationSession.objects.filter(user=user).order_by('-created_at')
+            
+            return standard_response(
+                data={
+                    'verification_sessions': DiditVerificationSessionSerializer(sessions, many=True).data
+                },
+                status_code=status.HTTP_200_OK
+            )
+            
+        except Exception as e:
+            return standard_response(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                error=[f"An error occurred while fetching verification sessions: {str(e)}"]
             )
 
 class ProfileViewSet(StandardResponseViewSet):

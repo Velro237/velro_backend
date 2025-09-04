@@ -4,6 +4,7 @@ from users.models import CustomUser
 from django.conf import settings
 from django.core.validators import MinValueValidator, MaxValueValidator
 from config.utils import upload_image, delete_image, optimized_image_url, auto_crop_url
+from django.contrib.postgres.fields import JSONField
 class TransportType(models.Model):
     name = models.CharField(max_length=50, unique=True)
     description = models.TextField(blank=True)
@@ -23,10 +24,15 @@ class TravelListing(models.Model):
     ]
 
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
-    pickup_country = models.ForeignKey('Country', on_delete=models.PROTECT, related_name='pickup_listings')
-    pickup_region = models.ForeignKey('Region', on_delete=models.PROTECT, related_name='pickup_listings')
-    destination_country = models.ForeignKey('Country', on_delete=models.PROTECT, related_name='destination_listings')
-    destination_region = models.ForeignKey('Region', on_delete=models.PROTECT, related_name='destination_listings')
+    # Legacy fields - kept for backwards compatibility
+    pickup_country = models.ForeignKey('Country', on_delete=models.PROTECT, related_name='pickup_listings', null=True, blank=True)
+    pickup_region = models.ForeignKey('Region', on_delete=models.PROTECT, related_name='pickup_listings', null=True, blank=True)
+    destination_country = models.ForeignKey('Country', on_delete=models.PROTECT, related_name='destination_listings', null=True, blank=True)
+    destination_region = models.ForeignKey('Region', on_delete=models.PROTECT, related_name='destination_listings', null=True, blank=True)
+    
+    # New fields for direct location data
+    pickup_location = models.ForeignKey('LocationData', on_delete=models.PROTECT, related_name='pickup_listings', null=True, blank=True)
+    destination_location = models.ForeignKey('LocationData', on_delete=models.PROTECT, related_name='destination_listings', null=True, blank=True)
     travel_date = models.DateField()
     travel_time = models.TimeField()
     mode_of_transport = models.ForeignKey(TransportType, on_delete=models.PROTECT)
@@ -46,7 +52,14 @@ class TravelListing(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
-        return f"{self.pickup_country.name} to {self.destination_country.name} - {self.travel_date}"
+        if self.pickup_location and self.destination_location:
+            pickup_name = f"{self.pickup_location.name}, {self.pickup_location.country}"
+            destination_name = f"{self.destination_location.name}, {self.destination_location.country}"
+        else:
+            pickup_name = f"{self.pickup_region.name}, {self.pickup_country.name}" if self.pickup_region else "Unknown"
+            destination_name = f"{self.destination_region.name}, {self.destination_country.name}" if self.destination_region else "Unknown"
+            
+        return f"{pickup_name} to {destination_name} - {self.travel_date}"
 
 class PackageType(models.Model):
     name = models.CharField(max_length=50, unique=True)
@@ -147,6 +160,21 @@ class Region(models.Model):
     class Meta:
         unique_together = ['name', 'country']
         ordering = ['country', 'name']
+
+class LocationData(models.Model):
+    """Model for storing flexible location data without requiring database entries"""
+    name = models.CharField(max_length=100)
+    country = models.CharField(max_length=100)
+    country_code = models.CharField(max_length=2)
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    def __str__(self):
+        return f"{self.name}, {self.country} ({self.country_code})"
+    
+    class Meta:
+        verbose_name_plural = "Location Data"
+        unique_together = ['name', 'country', 'country_code']
+
 
 class Review(models.Model):
     travel_listing = models.ForeignKey('TravelListing', on_delete=models.CASCADE, related_name='reviews')

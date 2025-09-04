@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import TravelListing, PackageRequest, Alert, Country, Region, TransportType, PackageType, Review
+from .models import TravelListing, PackageRequest, Alert, Country, Region, TransportType, PackageType, Review, LocationData
 from decimal import Decimal
 from django.db import models
 
@@ -37,11 +37,26 @@ class PackageTypeSerializer(serializers.ModelSerializer):
         model = PackageType
         fields = ['id', 'name', 'description']
 
+class LocationDataSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = LocationData
+        fields = ['id', 'name', 'country', 'country_code', 'created_at']
+        read_only_fields = ['id', 'created_at']
+
+
 class TravelListingSerializer(serializers.ModelSerializer):
+    # Legacy fields for backward compatibility
     pickup = RegionWithCountrySerializer(source='pickup_region', read_only=True)
     destination = RegionWithCountrySerializer(source='destination_region', read_only=True)
-    pickup_region_id = serializers.PrimaryKeyRelatedField(queryset=Region.objects.all(), source='pickup_region', write_only=True)
-    destination_region_id = serializers.PrimaryKeyRelatedField(queryset=Region.objects.all(), source='destination_region', write_only=True)
+    pickup_region_id = serializers.PrimaryKeyRelatedField(queryset=Region.objects.all(), source='pickup_region', write_only=True, required=False)
+    destination_region_id = serializers.PrimaryKeyRelatedField(queryset=Region.objects.all(), source='destination_region', write_only=True, required=False)
+    
+    # New location fields
+    pickup_location_data = LocationDataSerializer(source='pickup_location', read_only=True)
+    destination_location_data = LocationDataSerializer(source='destination_location', read_only=True)
+    pickup_region = serializers.DictField(write_only=True, required=False)
+    destination_region = serializers.DictField(write_only=True, required=False)
+    
     mode_of_transport = TransportTypeSerializer(read_only=True)
     mode_of_transport_id = serializers.PrimaryKeyRelatedField(queryset=TransportType.objects.all(), source='mode_of_transport', write_only=True)
     
@@ -79,35 +94,101 @@ class TravelListingSerializer(serializers.ModelSerializer):
     class Meta:
         model = TravelListing
         fields = [
-            'id', 'user', 'pickup', 'pickup_region_id', 'destination', 'destination_region_id',
+            'id', 'user', 
+            # Legacy location fields
+            'pickup', 'pickup_region_id', 'destination', 'destination_region_id',
+            # New location fields
+            'pickup_location_data', 'destination_location_data', 'pickup_region', 'destination_region',
             'travel_date', 'travel_time', 'mode_of_transport', 'mode_of_transport_id', 'maximum_weight_in_kg',
             'notes', 'fullSuitcaseOnly', 'price_per_kg', 'price_per_document', 'price_per_phone',
             'price_per_tablet', 'price_per_pc', 'price_per_file', 'price_full_suitcase', 'currency', 'status',
             'created_at', 'updated_at'
         ]
-        read_only_fields = ['user', 'created_at', 'updated_at', 'pickup', 'destination', 'mode_of_transport']
+        read_only_fields = ['user', 'created_at', 'updated_at', 'pickup', 'destination', 'mode_of_transport', 'pickup_location_data', 'destination_location_data']
 
     def create(self, validated_data):
-        pickup_region = validated_data.pop('pickup_region')
-        destination_region = validated_data.pop('destination_region')
-        validated_data['pickup_region'] = pickup_region
-        validated_data['pickup_country'] = pickup_region.country
-        validated_data['destination_region'] = destination_region
-        validated_data['destination_country'] = destination_region.country
+        # Handle location data in different formats
+        if 'pickup_region' in validated_data and isinstance(validated_data['pickup_region'], dict):
+            pickup_data = validated_data.pop('pickup_region')
+            # Create LocationData object
+            pickup_location = LocationData.objects.create(
+                name=pickup_data.get('name'),
+                country=pickup_data.get('country'),
+                country_code=pickup_data.get('countryCode')
+            )
+            validated_data['pickup_location'] = pickup_location
+        elif 'pickup_region' in validated_data and not isinstance(validated_data['pickup_region'], dict):
+            # Legacy format using ID
+            pickup_region = validated_data.pop('pickup_region')
+            validated_data['pickup_region'] = pickup_region
+            validated_data['pickup_country'] = pickup_region.country
+        
+        if 'destination_region' in validated_data and isinstance(validated_data['destination_region'], dict):
+            dest_data = validated_data.pop('destination_region')
+            # Create LocationData object
+            dest_location = LocationData.objects.create(
+                name=dest_data.get('name'),
+                country=dest_data.get('country'),
+                country_code=dest_data.get('countryCode')
+            )
+            validated_data['destination_location'] = dest_location
+        elif 'destination_region' in validated_data and not isinstance(validated_data['destination_region'], dict):
+            # Legacy format using ID
+            destination_region = validated_data.pop('destination_region')
+            validated_data['destination_region'] = destination_region
+            validated_data['destination_country'] = destination_region.country
         
         # Note: Validation logic is now handled in the validate method
         
         return super().create(validated_data)
 
     def update(self, instance, validated_data):
+        # Handle location data in different formats
         if 'pickup_region' in validated_data:
-            pickup_region = validated_data.pop('pickup_region')
-            instance.pickup_region = pickup_region
-            instance.pickup_country = pickup_region.country
+            if isinstance(validated_data['pickup_region'], dict):
+                pickup_data = validated_data.pop('pickup_region')
+                # Update or create LocationData object
+                if instance.pickup_location:
+                    pickup_location = instance.pickup_location
+                    pickup_location.name = pickup_data.get('name')
+                    pickup_location.country = pickup_data.get('country')
+                    pickup_location.country_code = pickup_data.get('countryCode')
+                    pickup_location.save()
+                else:
+                    pickup_location = LocationData.objects.create(
+                        name=pickup_data.get('name'),
+                        country=pickup_data.get('country'),
+                        country_code=pickup_data.get('countryCode')
+                    )
+                instance.pickup_location = pickup_location
+            else:
+                # Legacy format using ID
+                pickup_region = validated_data.pop('pickup_region')
+                instance.pickup_region = pickup_region
+                instance.pickup_country = pickup_region.country
+        
         if 'destination_region' in validated_data:
-            destination_region = validated_data.pop('destination_region')
-            instance.destination_region = destination_region
-            instance.destination_country = destination_region.country
+            if isinstance(validated_data['destination_region'], dict):
+                dest_data = validated_data.pop('destination_region')
+                # Update or create LocationData object
+                if instance.destination_location:
+                    dest_location = instance.destination_location
+                    dest_location.name = dest_data.get('name')
+                    dest_location.country = dest_data.get('country')
+                    dest_location.country_code = dest_data.get('countryCode')
+                    dest_location.save()
+                else:
+                    dest_location = LocationData.objects.create(
+                        name=dest_data.get('name'),
+                        country=dest_data.get('country'),
+                        country_code=dest_data.get('countryCode')
+                    )
+                instance.destination_location = dest_location
+            else:
+                # Legacy format using ID
+                destination_region = validated_data.pop('destination_region')
+                instance.destination_region = destination_region
+                instance.destination_country = destination_region.country
             
         # Note: Validation logic is now handled in the validate method
         # Any update that changes fullSuitcaseOnly will trigger the validate method

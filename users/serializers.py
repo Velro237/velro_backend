@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
-from .models import Profile, OTP
+from .models import Profile, OTP, DiditVerificationSession
 from django.utils import timezone
 from listings.models import Region, Country
 from listings.serializers import RegionSerializer, CountrySerializer
@@ -372,9 +372,26 @@ class TelegramUserRegistrationSerializer(serializers.ModelSerializer):
         user.save()
         return user
 
+class DiditVerificationSessionSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = DiditVerificationSession
+        fields = (
+            'id', 'user', 'session_id', 'session_number', 'session_token',
+            'vendor_data', 'metadata', 'status', 'workflow_id', 
+            'callback_url', 'verification_url', 'created_at', 'updated_at'
+        )
+        read_only_fields = ('created_at', 'updated_at', 'user')
+
 class DiditIdVerificationSerializer(serializers.Serializer):
-    front_image = serializers.ImageField(required=True)
-    back_image = serializers.ImageField(required=True)
+    session_id = serializers.CharField(required=True)
+    session_number = serializers.IntegerField(required=False, allow_null=True)
+    session_token = serializers.CharField(required=True)
+    vendor_data = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    metadata = serializers.JSONField(required=False)
+    status = serializers.CharField(required=True)
+    workflow_id = serializers.CharField(required=True)
+    callback = serializers.URLField(required=False, allow_blank=True)
+    url = serializers.URLField(required=False, allow_blank=True)
     
 class DiditPhoneSendSerializer(serializers.Serializer):
     phone_number = serializers.CharField(required=True, help_text="Phone number in E.164 format (e.g. +14155552671)")

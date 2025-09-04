@@ -97,6 +97,10 @@ class TravelListingViewSet(StandardResponseViewSet):
         - pickup_region_name: Name (or partial name) of the pickup region
         - destination_country_name: Name (or partial name) of the destination country
         - destination_region_name: Name (or partial name) of the destination region
+        - pickup_location_name: Name of pickup location (direct location data)
+        - destination_location_name: Name of destination location (direct location data)
+        - pickup_location_country: Country of pickup location (direct location data)
+        - destination_location_country: Country of destination location (direct location data)
         - travel_date: listings with travel_date >= this date (YYYY-MM-DD)
         - status: filter by status
         """
@@ -109,6 +113,13 @@ class TravelListingViewSet(StandardResponseViewSet):
         pickup_region_name = self.request.query_params.get('pickup_region_name', None)
         destination_country_name = self.request.query_params.get('destination_country_name', None)
         destination_region_name = self.request.query_params.get('destination_region_name', None)
+        
+        # New location data filters
+        pickup_location_name = self.request.query_params.get('pickup_location_name', None)
+        destination_location_name = self.request.query_params.get('destination_location_name', None)
+        pickup_location_country = self.request.query_params.get('pickup_location_country', None)
+        destination_location_country = self.request.query_params.get('destination_location_country', None)
+        
         travel_date = self.request.query_params.get('travel_date', None)
         status = self.request.query_params.get('status', None)
 
@@ -134,7 +145,7 @@ class TravelListingViewSet(StandardResponseViewSet):
             else:
                 queryset = queryset.filter(status='published')
 
-        # Apply additional filters using IDs
+        # Apply filters for legacy location data (using IDs)
         if pickup_country:
             queryset = queryset.filter(pickup_country_id=pickup_country)
         if pickup_region:
@@ -144,15 +155,29 @@ class TravelListingViewSet(StandardResponseViewSet):
         if destination_region:
             queryset = queryset.filter(destination_region_id=destination_region)
 
-        # Apply additional filters using names (case-insensitive, partial match)
+        # Apply legacy filters using names (case-insensitive, partial match)
         if pickup_country_name:
-            queryset = queryset.filter(pickup_country__name__icontains=pickup_country_name)
+            queryset = queryset.filter(Q(pickup_country__name__icontains=pickup_country_name) | 
+                                       Q(pickup_location__country__icontains=pickup_country_name))
         if pickup_region_name:
-            queryset = queryset.filter(pickup_region__name__icontains=pickup_region_name)
+            queryset = queryset.filter(Q(pickup_region__name__icontains=pickup_region_name) | 
+                                       Q(pickup_location__name__icontains=pickup_region_name))
         if destination_country_name:
-            queryset = queryset.filter(destination_country__name__icontains=destination_country_name)
+            queryset = queryset.filter(Q(destination_country__name__icontains=destination_country_name) | 
+                                       Q(destination_location__country__icontains=destination_country_name))
         if destination_region_name:
-            queryset = queryset.filter(destination_region__name__icontains=destination_region_name)
+            queryset = queryset.filter(Q(destination_region__name__icontains=destination_region_name) | 
+                                       Q(destination_location__name__icontains=destination_region_name))
+        
+        # Apply filters for new location data
+        if pickup_location_name:
+            queryset = queryset.filter(pickup_location__name__icontains=pickup_location_name)
+        if destination_location_name:
+            queryset = queryset.filter(destination_location__name__icontains=destination_location_name)
+        if pickup_location_country:
+            queryset = queryset.filter(pickup_location__country__icontains=pickup_location_country)
+        if destination_location_country:
+            queryset = queryset.filter(destination_location__country__icontains=destination_location_country)
 
         if travel_date:
             try:
