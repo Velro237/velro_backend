@@ -2,9 +2,9 @@ services:
   db:
     image: postgres:14
     environment:
-      POSTGRES_DB: p2pkilosales
-      POSTGRES_USER: p2pkilosales
-      POSTGRES_PASSWORD: p2pkilosales
+      POSTGRES_DB: velro_db
+      POSTGRES_USER: velro_db_user
+      POSTGRES_PASSWORD: BNS2rE5kaRnSoVKeS4MskdsYCg9Bs9T2
     ports:
       - "5432:5432"
     volumes:
@@ -27,7 +27,7 @@ services:
     env_file:
       - .env
     command: uvicorn config.asgi:application --host 0.0.0.0 --port 8000 --reload
-    
+
 volumes:
   postgres_data:
 
