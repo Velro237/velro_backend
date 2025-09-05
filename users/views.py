@@ -1197,7 +1197,7 @@ class UserViewSet(StandardResponseViewSet):
                 
                 if not verification_session:
                     # No verification sessions found, return the user profile with default status
-                    user.is_identity_verified = 'not_started'  # Add a new status "not_started"
+                    user.is_identity_verified = 'not_start'  # Add a new status "not_start"
                     user.save()
                     
                     return standard_response(
@@ -1253,7 +1253,7 @@ class UserViewSet(StandardResponseViewSet):
                     elif didit_status == 'expired':
                         user.is_identity_verified = 'rejected'
                     elif didit_status == 'not started':
-                        user.is_identity_verified = 'not_started'
+                        user.is_identity_verified = 'not_start'
                     else:
                         user.is_identity_verified = 'pending'
                     
@@ -1267,7 +1267,7 @@ class UserViewSet(StandardResponseViewSet):
                     elif current_status in ['declined', 'rejected', 'expired']:
                         user.is_identity_verified = 'rejected'
                     elif current_status == 'not started':
-                        user.is_identity_verified = 'not_started'
+                        user.is_identity_verified = 'not_start'
                     else:
                         user.is_identity_verified = 'pending'
                     
@@ -1284,7 +1284,7 @@ class UserViewSet(StandardResponseViewSet):
                 elif current_status in ['declined', 'rejected']:
                     user.is_identity_verified = 'rejected'
                 elif current_status == 'not started':
-                    user.is_identity_verified = 'not_started'
+                    user.is_identity_verified = 'not_start'
                 else:
                     user.is_identity_verified = 'pending'
                 
