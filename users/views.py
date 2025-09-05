@@ -205,20 +205,9 @@ class UserViewSet(StandardResponseViewSet):
         # Process location data from request
         data = request.data.copy()
         
-        # Handle legacy and new location data format consistently
-        # (similar to how TravelListing and Alert handle it)
+        # Handle pickup_location as user_location for compatibility
         if 'pickup_location' in data and isinstance(data['pickup_location'], dict):
-            # Extract location details
-            location_data = data['pickup_location']
-            data['location_name'] = location_data.get('name')
-            data['location_country'] = location_data.get('country')
-            data['location_country_code'] = location_data.get('country_code')
-        elif 'user_location' in data and isinstance(data['user_location'], dict):
-            # Extract location details
-            location_data = data['user_location']
-            data['location_name'] = location_data.get('name')
-            data['location_country'] = location_data.get('country')
-            data['location_country_code'] = location_data.get('country_code')
+            data['user_location'] = data.pop('pickup_location')
             
         # Create the user with location data
         serializer = UserRegistrationSerializer(data=data)

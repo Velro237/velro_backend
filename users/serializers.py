@@ -47,20 +47,12 @@ class UserSerializer(serializers.ModelSerializer):
         return None
 
 class UserRegistrationSerializer(serializers.ModelSerializer):
-    # Location fields for profile
-    city_of_residence_id = serializers.PrimaryKeyRelatedField(queryset=Region.objects.all(), write_only=True, required=False)
-    country_of_residence = serializers.CharField(required=False)
-    
-    # New location data fields
-    location_name = serializers.CharField(required=False)
-    location_country = serializers.CharField(required=False)
-    location_country_code = serializers.CharField(required=False, max_length=2)
+    # Only using direct location object approach
+    user_location = serializers.JSONField(required=False)
     
     class Meta:
         model = User
-        fields = ('email', 'username', 'first_name', 'last_name', 'phone_number',
-                 'city_of_residence_id', 'country_of_residence',
-                 'location_name', 'location_country', 'location_country_code')
+        fields = ('email', 'username', 'first_name', 'last_name', 'phone_number', 'user_location')
 
     def validate_email(self, value):
         if User.objects.filter(email=value).exists():
@@ -82,13 +74,7 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         # Extract location data
-        city_of_residence_id = validated_data.pop('city_of_residence_id', None)
-        country_of_residence = validated_data.pop('country_of_residence', None)
-        
-        # Extract new location data fields
-        location_name = validated_data.pop('location_name', None)
-        location_country = validated_data.pop('location_country', None)
-        location_country_code = validated_data.pop('location_country_code', None)
+        user_location = validated_data.pop('user_location', None)
         
         # Ensure phone number is normalized before saving
         validated_data['phone_number'] = ''.join(filter(str.isdigit, validated_data['phone_number']))
@@ -103,27 +89,19 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
         user.save()
         
         # Update profile with location data
-        if hasattr(user, 'profile'):
+        if hasattr(user, 'profile') and user_location:
             profile = user.profile
             
-            # Set city_of_residence if provided
-            if city_of_residence_id:
-                profile.city_of_residence = city_of_residence_id
-            
-            # Set country_of_residence if provided
-            if country_of_residence:
-                profile.country_of_residence = country_of_residence
-            
-            # Create or find LocationData if all new location fields are provided
-            if all([location_name, location_country, location_country_code]):
+            # Process location data if provided
+            if isinstance(user_location, dict) and 'name' in user_location and 'country' in user_location and 'country_code' in user_location:
                 from listings.models import LocationData
                 location, created = LocationData.objects.get_or_create(
-                    name=location_name,
-                    country=location_country,
-                    country_code=location_country_code
+                    name=user_location['name'],
+                    country=user_location['country'],
+                    country_code=user_location['country_code']
                 )
-                # Note: We're storing reference to LocationData in profile for future integration
-                # Store these values in profile.preferences as JSON
+                
+                # Store location reference in profile preferences
                 preferences = profile.preferences or {}
                 if isinstance(preferences, str) and preferences.strip():
                     import json
@@ -141,8 +119,7 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
                     'country_code': location.country_code
                 }
                 profile.preferences = preferences
-            
-            profile.save()
+                profile.save()
             
         return user
 
