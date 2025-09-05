@@ -13,15 +13,54 @@ class UserSerializer(serializers.ModelSerializer):
     """
     Serializer for the User model
     """
+    location = serializers.SerializerMethodField()
+    
     class Meta:
         model = User
-        fields = ['id', 'username', 'email', 'phone_number', 'first_name', 'last_name', 'is_active', 'date_joined', 'profile', 'is_identity_verified', 'is_phone_verified']
+        fields = ['id', 'username', 'email', 'phone_number', 'first_name', 'last_name', 'is_active', 'date_joined', 'profile', 'is_identity_verified', 'is_phone_verified', 'location']
         read_only_fields = ['id', 'date_joined']
+        
+    def get_location(self, obj):
+        if hasattr(obj, 'profile') and obj.profile:
+            # Try to get location from preferences
+            preferences = obj.profile.preferences
+            if isinstance(preferences, dict) and 'location' in preferences:
+                return preferences['location']
+            elif isinstance(preferences, str) and preferences.strip():
+                import json
+                try:
+                    prefs_dict = json.loads(preferences)
+                    if 'location' in prefs_dict:
+                        return prefs_dict['location']
+                except:
+                    pass
+            # Fall back to country and city of residence
+            location_data = {}
+            if obj.profile.country_of_residence:
+                location_data['country'] = obj.profile.country_of_residence
+            if hasattr(obj.profile, 'city_of_residence') and obj.profile.city_of_residence:
+                location_data['name'] = obj.profile.city_of_residence.name
+                if obj.profile.city_of_residence.country:
+                    location_data['country'] = obj.profile.city_of_residence.country.name
+                    location_data['country_code'] = obj.profile.city_of_residence.country.code
+            return location_data if location_data else None
+        return None
 
 class UserRegistrationSerializer(serializers.ModelSerializer):
+    # Location fields for profile
+    city_of_residence_id = serializers.PrimaryKeyRelatedField(queryset=Region.objects.all(), write_only=True, required=False)
+    country_of_residence = serializers.CharField(required=False)
+    
+    # New location data fields
+    location_name = serializers.CharField(required=False)
+    location_country = serializers.CharField(required=False)
+    location_country_code = serializers.CharField(required=False, max_length=2)
+    
     class Meta:
         model = User
-        fields = ('email', 'username', 'first_name', 'last_name', 'phone_number')
+        fields = ('email', 'username', 'first_name', 'last_name', 'phone_number',
+                 'city_of_residence_id', 'country_of_residence',
+                 'location_name', 'location_country', 'location_country_code')
 
     def validate_email(self, value):
         if User.objects.filter(email=value).exists():
@@ -42,6 +81,15 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
         return phone
 
     def create(self, validated_data):
+        # Extract location data
+        city_of_residence_id = validated_data.pop('city_of_residence_id', None)
+        country_of_residence = validated_data.pop('country_of_residence', None)
+        
+        # Extract new location data fields
+        location_name = validated_data.pop('location_name', None)
+        location_country = validated_data.pop('location_country', None)
+        location_country_code = validated_data.pop('location_country_code', None)
+        
         # Ensure phone number is normalized before saving
         validated_data['phone_number'] = ''.join(filter(str.isdigit, validated_data['phone_number']))
         user = User.objects.create(
@@ -53,6 +101,49 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
         )
         user.set_unusable_password()
         user.save()
+        
+        # Update profile with location data
+        if hasattr(user, 'profile'):
+            profile = user.profile
+            
+            # Set city_of_residence if provided
+            if city_of_residence_id:
+                profile.city_of_residence = city_of_residence_id
+            
+            # Set country_of_residence if provided
+            if country_of_residence:
+                profile.country_of_residence = country_of_residence
+            
+            # Create or find LocationData if all new location fields are provided
+            if all([location_name, location_country, location_country_code]):
+                from listings.models import LocationData
+                location, created = LocationData.objects.get_or_create(
+                    name=location_name,
+                    country=location_country,
+                    country_code=location_country_code
+                )
+                # Note: We're storing reference to LocationData in profile for future integration
+                # Store these values in profile.preferences as JSON
+                preferences = profile.preferences or {}
+                if isinstance(preferences, str) and preferences.strip():
+                    import json
+                    try:
+                        preferences = json.loads(preferences)
+                    except:
+                        preferences = {}
+                elif not isinstance(preferences, dict):
+                    preferences = {}
+                
+                preferences['location'] = {
+                    'id': location.id,
+                    'name': location.name,
+                    'country': location.country,
+                    'country_code': location.country_code
+                }
+                profile.preferences = preferences
+            
+            profile.save()
+            
         return user
 
 class IdTypeSerializer(serializers.ModelSerializer):

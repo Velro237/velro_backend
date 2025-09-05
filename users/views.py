@@ -202,7 +202,26 @@ class UserViewSet(StandardResponseViewSet):
 
     @action(detail=False, methods=['post'])
     def register(self, request):
-        serializer = UserRegistrationSerializer(data=request.data)
+        # Process location data from request
+        data = request.data.copy()
+        
+        # Handle legacy and new location data format consistently
+        # (similar to how TravelListing and Alert handle it)
+        if 'pickup_location' in data and isinstance(data['pickup_location'], dict):
+            # Extract location details
+            location_data = data['pickup_location']
+            data['location_name'] = location_data.get('name')
+            data['location_country'] = location_data.get('country')
+            data['location_country_code'] = location_data.get('country_code')
+        elif 'user_location' in data and isinstance(data['user_location'], dict):
+            # Extract location details
+            location_data = data['user_location']
+            data['location_name'] = location_data.get('name')
+            data['location_country'] = location_data.get('country')
+            data['location_country_code'] = location_data.get('country_code')
+            
+        # Create the user with location data
+        serializer = UserRegistrationSerializer(data=data)
         if serializer.is_valid():
             user = serializer.save()
             otp = ''.join(random.choices(string.digits, k=6))
@@ -1161,50 +1180,130 @@ class UserViewSet(StandardResponseViewSet):
     @action(detail=False, methods=['get'])
     def check_verification_status(self, request):
         """
-        Checks the status of a verification session by session_id
-        Updates user verification status if the session status has changed
+        Checks the verification status directly from Didit.me API
+        Updates the user profile if the verification status has changed
+        Returns the complete user profile with the updated status
         """
+        # Get the user - either the authenticated user or by user_id param
+        user = request.user
+        user_id_param = request.query_params.get('user_id')
         session_id = request.query_params.get('session_id')
         
-        if not session_id:
-            return standard_response(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                error=["session_id is required"]
-            )
-            
-        try:
-            # Find the verification session
+        # If user_id is provided and current user is admin, allow checking other users
+        if user_id_param and request.user.is_staff:
             try:
-                verification_session = DiditVerificationSession.objects.get(session_id=session_id)
-            except DiditVerificationSession.DoesNotExist:
+                user = User.objects.get(id=user_id_param)
+            except User.DoesNotExist:
                 return standard_response(
                     status_code=status.HTTP_404_NOT_FOUND,
-                    error=[f"Verification session with id {session_id} not found"]
+                    error=[f"User with id {user_id_param} not found"]
+                )
+        
+        try:
+            # Find the most recent verification session for this user if no session_id provided
+            if not session_id:
+                verification_session = DiditVerificationSession.objects.filter(
+                    user=user
+                ).order_by('-created_at').first()
+                
+                if not verification_session:
+                    # No verification sessions found, return the user profile with default status
+                    user.is_identity_verified = 'not_started'  # Add a new status "not_started"
+                    user.save()
+                    
+                    return standard_response(
+                        data=UserSerializer(user).data,
+                        status_code=status.HTTP_200_OK
+                    )
+            else:
+                # If session_id is provided, find that specific session
+                try:
+                    verification_session = DiditVerificationSession.objects.get(session_id=session_id)
+                    # Ensure the session belongs to the authenticated user unless user is staff
+                    if verification_session.user != request.user and not request.user.is_staff:
+                        return standard_response(
+                            status_code=status.HTTP_403_FORBIDDEN,
+                            error=["You don't have permission to access this verification session"]
+                        )
+                    user = verification_session.user
+                except DiditVerificationSession.DoesNotExist:
+                    return standard_response(
+                        status_code=status.HTTP_404_NOT_FOUND,
+                        error=[f"Verification session with id {session_id} not found"]
+                    )
+            
+            # Call Didit.me API to get the latest status
+            try:
+                # Prepare headers for Didit.me API
+                headers = {
+                    "Accept": "application/json",
+                    "Content-Type": "application/json",
+                    "X-Api-Key": settings.DIDIT_API_KEY
+                }
+                
+                # Make API call to Didit to get the current status
+                # The endpoint URL needs to be adjusted based on Didit's API documentation
+                response = requests.get(
+                    f"{settings.DIDIT_API_BASE_URL}/session/{verification_session.session_id}",
+                    headers=headers
                 )
                 
-            # Optional: Call Didit.me API to get the latest status
-            # This could be added here if needed
+                if response.status_code == 200:
+                    didit_data = response.json()
+                    didit_status = didit_data.get('status', '').lower()
+                    
+                    # Update the session in our database
+                    verification_session.status = didit_data.get('status', verification_session.status)
+                    verification_session.save()
+                    
+                    # Map Didit status to our internal status
+                    if didit_status == 'approved':
+                        user.is_identity_verified = 'completed'
+                    elif didit_status in ['declined', 'rejected']:
+                        user.is_identity_verified = 'rejected'
+                    elif didit_status == 'expired':
+                        user.is_identity_verified = 'rejected'
+                    elif didit_status == 'not started':
+                        user.is_identity_verified = 'not_started'
+                    else:
+                        user.is_identity_verified = 'pending'
+                    
+                    user.save()
+                else:
+                    # If API call fails, use the stored status
+                    current_status = verification_session.status.lower()
+                    
+                    if current_status == 'approved':
+                        user.is_identity_verified = 'completed'
+                    elif current_status in ['declined', 'rejected', 'expired']:
+                        user.is_identity_verified = 'rejected'
+                    elif current_status == 'not started':
+                        user.is_identity_verified = 'not_started'
+                    else:
+                        user.is_identity_verified = 'pending'
+                    
+                    user.save()
             
-            user = verification_session.user
-            
-            # Update user's verification status based on the session status
-            current_status = verification_session.status.lower()
-            
-            if current_status == 'approved':
-                user.is_identity_verified = 'completed'
-            elif current_status == 'declined' or current_status == 'rejected':
-                user.is_identity_verified = 'rejected'
-            else:
-                user.is_identity_verified = 'pending'
+            except Exception as api_error:
+                # If API call fails, log error and use the stored status
+                print(f"Error calling Didit API: {str(api_error)}")
+                # Use the stored status
+                current_status = verification_session.status.lower()
                 
-            user.save()
+                if current_status == 'approved':
+                    user.is_identity_verified = 'completed'
+                elif current_status in ['declined', 'rejected']:
+                    user.is_identity_verified = 'rejected'
+                elif current_status == 'not started':
+                    user.is_identity_verified = 'not_started'
+                else:
+                    user.is_identity_verified = 'pending'
+                
+                user.save()
             
+            # Return the complete user profile
             return standard_response(
-                data={
-                    'verification_status': user.is_identity_verified,
-                    'session_status': verification_session.status,
-                    'session_details': DiditVerificationSessionSerializer(verification_session).data
-                },
+                data=UserSerializer(user).data,
                 status_code=status.HTTP_200_OK
             )
             
