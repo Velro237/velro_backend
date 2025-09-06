@@ -25,9 +25,6 @@ from rest_framework.permissions import AllowAny
 
 load_dotenv()
 
-class LoginView(APIView):
-    permission_classes = [AllowAny]
-    # ...
 
 # Replace the DATABASES section of your settings.py with this
 tmpPostgres = urlparse(os.getenv("DATABASE_URL"))
@@ -103,17 +100,7 @@ TEMPLATES = [
 WSGI_APPLICATION = 'config.wsgi.application'
 ASGI_APPLICATION = 'config.asgi.application'
 
-if DEBUG:
-    REDIS_HOSTS = [("localhost", 6379)]  # or ("redis", 6379) if using docker-compose
-else:
-    REDIS_HOSTS = [os.getenv("REDIS_URL")]  # e.g. redis://:pwd@host:6379/0
 
-CHANNEL_LAYERS = {
-    "default": {
-        "BACKEND": "channels_redis.core.RedisChannelLayer",
-        "CONFIG": {"hosts": REDIS_HOSTS},
-    },
-}
 
 
 
