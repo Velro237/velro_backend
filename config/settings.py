@@ -18,8 +18,16 @@ from urllib.parse import urlparse
 import dj_database_url
 import firebase_admin
 from firebase_admin import credentials
+from rest_framework.permissions import AllowAny
+
+
+
 
 load_dotenv()
+
+class LoginView(APIView):
+    permission_classes = [AllowAny]
+    # ...
 
 # Replace the DATABASES section of your settings.py with this
 tmpPostgres = urlparse(os.getenv("DATABASE_URL"))
@@ -58,6 +66,7 @@ INSTALLED_APPS = [
     'messaging',
     'reporting',
     'rest_framework_simplejwt.token_blacklist',
+    'channels'
 ]
 SITE_ID = 1
 
@@ -93,6 +102,19 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'config.wsgi.application'
 ASGI_APPLICATION = 'config.asgi.application'
+
+if DEBUG:
+    REDIS_HOSTS = [("localhost", 6379)]  # or ("redis", 6379) if using docker-compose
+else:
+    REDIS_HOSTS = [os.getenv("REDIS_URL")]  # e.g. redis://:pwd@host:6379/0
+
+CHANNEL_LAYERS = {
+    "default": {
+        "BACKEND": "channels_redis.core.RedisChannelLayer",
+        "CONFIG": {"hosts": REDIS_HOSTS},
+    },
+}
+
 
 
 # Database
@@ -219,13 +241,16 @@ SIMPLE_JWT = {
 }
 
 # Channel Layers Configuration
-REDIS_HOSTS = [os.getenv("REDIS_URL")] if not DEBUG else [("redis", 6379) or ("localhost", 6379)]
+if DEBUG:
+    REDIS_HOSTS = [("localhost", 6379)]   # or your docker-compose service name
+else:
+    # channels_redis accepts either URL strings or (host, port) tuples
+    REDIS_HOSTS = [os.getenv("REDIS_URL")]  # e.g. redis://:pwd@host:6379/0
+
 CHANNEL_LAYERS = {
     "default": {
         "BACKEND": "channels_redis.core.RedisChannelLayer",
-        "CONFIG": {
-            "hosts": REDIS_HOSTS,
-        },
+        "CONFIG": {"hosts": REDIS_HOSTS},
     },
 }
 
