@@ -168,3 +168,15 @@ class NotificationConsumer(AsyncWebsocketConsumer):
             'notification': event['notification']
         }))
     
+
+
+# Simple infra test: accept immediately and echo messages
+from channels.generic.websocket import AsyncWebsocketConsumer
+import json
+
+class PingConsumer(AsyncWebsocketConsumer):
+    async def connect(self):
+        await self.accept()  # accept ASAP
+
+    async def receive(self, text_data=None, bytes_data=None):
+        await self.send(text_data=text_data or json.dumps({"pong": True}))
