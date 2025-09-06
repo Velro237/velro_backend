@@ -1113,6 +1113,7 @@ class UserViewSet(StandardResponseViewSet):
         """
         Stores verification session data received from Didit.me API
         Updates user verification status based on the session status
+        Handles both new sessions and updates to existing sessions
         """
         serializer = DiditIdVerificationSerializer(data=request.data)
         if not serializer.is_valid():
@@ -1125,19 +1126,45 @@ class UserViewSet(StandardResponseViewSet):
         session_data = serializer.validated_data
         
         try:
-            # Store the session information in the database
-            verification_session = DiditVerificationSession.objects.create(
-                user=user,
-                session_id=session_data['session_id'],
-                session_number=session_data.get('session_number'),
-                session_token=session_data['session_token'],
-                vendor_data=session_data.get('vendor_data', ''),
-                metadata=session_data.get('metadata', {}),
-                status=session_data['status'],
-                workflow_id=session_data['workflow_id'],
-                callback_url=session_data.get('callback', ''),
-                verification_url=session_data.get('url', '')
-            )
+            # Check if a session with this ID already exists for the user
+            session_id = session_data['session_id']
+            verification_session = None
+            
+            try:
+                # Try to get existing session
+                verification_session = DiditVerificationSession.objects.get(
+                    session_id=session_id
+                )
+                
+                # Update the existing session with new data
+                verification_session.session_token = session_data['session_token']
+                verification_session.session_number = session_data.get('session_number')
+                verification_session.vendor_data = session_data.get('vendor_data', '')
+                verification_session.metadata = session_data.get('metadata', {})
+                verification_session.status = session_data['status']
+                verification_session.workflow_id = session_data['workflow_id']
+                verification_session.callback_url = session_data.get('callback', '')
+                verification_session.verification_url = session_data.get('url', '')
+                verification_session.save()
+                
+                message = 'ID verification session updated successfully'
+                
+            except DiditVerificationSession.DoesNotExist:
+                # Create a new session
+                verification_session = DiditVerificationSession.objects.create(
+                    user=user,
+                    session_id=session_id,
+                    session_number=session_data.get('session_number'),
+                    session_token=session_data['session_token'],
+                    vendor_data=session_data.get('vendor_data', ''),
+                    metadata=session_data.get('metadata', {}),
+                    status=session_data['status'],
+                    workflow_id=session_data['workflow_id'],
+                    callback_url=session_data.get('callback', ''),
+                    verification_url=session_data.get('url', '')
+                )
+                
+                message = 'ID verification session created successfully'
             
             # Update user's identity verification status based on session status
             if session_data['status'].lower() == 'approved':
@@ -1152,7 +1179,7 @@ class UserViewSet(StandardResponseViewSet):
             # Return the verification session data
             return standard_response(
                 data={
-                    'message': f'ID verification session stored successfully',
+                    'message': message,
                     'verification_status': user.is_identity_verified,
                     'session_id': verification_session.session_id,
                     'session_details': DiditVerificationSessionSerializer(verification_session).data
