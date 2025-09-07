@@ -18,8 +18,13 @@ from urllib.parse import urlparse
 import dj_database_url
 import firebase_admin
 from firebase_admin import credentials
+from rest_framework.permissions import AllowAny
+
+
+
 
 load_dotenv()
+
 
 # Replace the DATABASES section of your settings.py with this
 tmpPostgres = urlparse(os.getenv("DATABASE_URL"))
@@ -58,6 +63,7 @@ INSTALLED_APPS = [
     'messaging',
     'reporting',
     'rest_framework_simplejwt.token_blacklist',
+    'channels'
 ]
 SITE_ID = 1
 
@@ -93,6 +99,9 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'config.wsgi.application'
 ASGI_APPLICATION = 'config.asgi.application'
+
+
+
 
 
 # Database
@@ -218,16 +227,21 @@ SIMPLE_JWT = {
     'BLACKLIST_AFTER_ROTATION': True,
 }
 
-# Channel Layers Configuration
-REDIS_HOSTS = [os.getenv("REDIS_URL")] if not DEBUG else [("redis", 6379) or ("localhost", 6379)]
-CHANNEL_LAYERS = {
-    "default": {
-        "BACKEND": "channels_redis.core.RedisChannelLayer",
-        "CONFIG": {
-            "hosts": REDIS_HOSTS,
-        },
-    },
-}
+# Channel Layers (WebSocket fan-out)
+if DEBUG:
+    # Local/dev only (no Redis needed)
+    CHANNEL_LAYERS = {
+        "default": {"BACKEND": "channels.layers.InMemoryChannelLayer"}
+    }
+else:
+    # Render/production: requires REDIS_URL env var (e.g. redis://:pwd@host:6379/0)
+    CHANNEL_LAYERS = {
+        "default": {
+            "BACKEND": "channels_redis.core.RedisChannelLayer",
+            "CONFIG": {"hosts": [os.getenv("REDIS_URL")]},
+        }
+    }
+
 
 # Google OAuth2 settings
 GOOGLE_CLIENT_ID = os.environ.get('GOOGLE_CLIENT_ID', '')

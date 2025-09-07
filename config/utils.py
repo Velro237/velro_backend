@@ -3,26 +3,42 @@ import cloudinary
 import cloudinary.uploader
 from cloudinary.utils import cloudinary_url
 
-def standard_response(data=None, status_code=200, error=None):
+
+def standard_response(data=None, status_code=200, message=None, error=None, meta=None):
     """
-    Standardize API response format
-    
-    Args:
-        data: Response data (dict or list)
-        status_code: HTTP status code
-        error: List of error messages
-    
-    Returns:
-        Response object with standardized format
+    Backward-compatible envelope:
+    - Keeps old keys EXACTLY: status (string), error (list), data (object), status_code (int)
+    - Adds new keys: success (bool), message (str), error_obj (dict), meta (dict)
     """
-    response_data = {
+    # Legacy behavior: keep `error` as a LIST exactly as before
+    if error is None:
+        legacy_error_list = []
+        error_obj = None
+    elif isinstance(error, list):
+        legacy_error_list = error
+        error_obj = {"code": "ERROR", "message": "; ".join(map(str, error))}
+    elif isinstance(error, dict):
+        legacy_error_list = [error]  # keep old RN happy
+        error_obj = error
+    else:
+        legacy_error_list = [str(error)]
+        error_obj = {"code": "ERROR", "message": str(error)}
+
+    payload = {
+        # ✅ New fields (RN can start using these later)
+        "success": (error_obj is None) and (status_code < 400),
+        "message": message or ("OK" if status_code < 400 else "An error occurred"),
+        "error_obj": error_obj,     # structured error
+        "meta": meta or {},
+
+        # ✅ Legacy fields (unchanged contract)
         "status": "SUCCESS" if status_code < 400 else "FAILED",
         "data": data if data is not None else {},
         "status_code": status_code,
-        "error": error if error is not None else []
+        "error": legacy_error_list,  # ← keep as LIST
     }
-    
-    return Response(response_data, status=status_code) 
+    return Response(payload, status=status_code)
+
 
 from django.conf import settings
 
