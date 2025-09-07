@@ -180,3 +180,31 @@ class PingConsumer(AsyncWebsocketConsumer):
 
     async def receive(self, text_data=None, bytes_data=None):
         await self.send(text_data=text_data or json.dumps({"pong": True}))
+
+import json, traceback
+from channels.generic.websocket import AsyncWebsocketConsumer
+
+class ChatConsumer(AsyncWebsocketConsumer):
+    async def connect(self):
+        try:
+            self.conversation_id = self.scope["url_route"]["kwargs"]["conversation_id"]
+            self.group_name = f"chat_{self.conversation_id}"
+
+            # Try group_add (this hits channel layer: Redis in prod)
+            await self.channel_layer.group_add(self.group_name, self.channel_name)
+
+            await self.accept()
+            await self.send(text_data=json.dumps({
+                "connected": True,
+                "conversation_id": self.conversation_id,
+                "user_id": getattr(self.scope.get("user"), "id", None),
+                "is_auth": getattr(self.scope.get("user"), "is_authenticated", False),
+            }))
+        except Exception:
+            traceback.print_exc()
+            # Fail gracefully so client sees the close instead of spin
+            try:
+                await self.close(code=4002)
+            except Exception:
+                pass
+
