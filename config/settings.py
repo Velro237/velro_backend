@@ -227,19 +227,21 @@ SIMPLE_JWT = {
     'BLACKLIST_AFTER_ROTATION': True,
 }
 
-# Channel Layers Configuration
+# Channel Layers (WebSocket fan-out)
 if DEBUG:
-    REDIS_HOSTS = [("localhost", 6379)]   # or your docker-compose service name
+    # Local/dev only (no Redis needed)
+    CHANNEL_LAYERS = {
+        "default": {"BACKEND": "channels.layers.InMemoryChannelLayer"}
+    }
 else:
-    # channels_redis accepts either URL strings or (host, port) tuples
-    REDIS_HOSTS = [os.getenv("REDIS_URL")]  # e.g. redis://:pwd@host:6379/0
+    # Render/production: requires REDIS_URL env var (e.g. redis://:pwd@host:6379/0)
+    CHANNEL_LAYERS = {
+        "default": {
+            "BACKEND": "channels_redis.core.RedisChannelLayer",
+            "CONFIG": {"hosts": [os.getenv("REDIS_URL")]},
+        }
+    }
 
-CHANNEL_LAYERS = {
-    "default": {
-        "BACKEND": "channels_redis.core.RedisChannelLayer",
-        "CONFIG": {"hosts": REDIS_HOSTS},
-    },
-}
 
 # Google OAuth2 settings
 GOOGLE_CLIENT_ID = os.environ.get('GOOGLE_CLIENT_ID', '')
