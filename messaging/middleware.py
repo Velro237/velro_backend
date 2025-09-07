@@ -48,3 +48,28 @@ class JWTAuthMiddleware(BaseMiddleware):
 
 def JWTAuthMiddlewareStack(inner):
     return JWTAuthMiddleware(AuthMiddlewareStack(inner)) 
+
+# ... existing imports ...
+
+class JWTAuthMiddleware(BaseMiddleware):
+    async def __call__(self, scope, receive, send):
+        query = parse_qs(scope.get("query_string", b"").decode())
+        token = (query.get("token") or [None])[0]
+
+        # Default
+        scope["user"] = AnonymousUser()
+        scope["user_id"] = None
+
+        if token:
+            try:
+                at = AccessToken(token)   # will raise if invalid/expired
+                uid = at.get("user_id")
+                scope["user_id"] = uid
+                # fetch real user (optional; fine to skip for now)
+                user = await database_sync_to_async(User.objects.get)(id=uid)
+                scope["user"] = user
+                print("WS-JWT OK user_id:", uid)
+            except Exception as e:
+                print("WS-JWT ERROR:", e)  # <-- you will see this in Render Logs
+
+        return await super().__call__(scope, receive, send)
