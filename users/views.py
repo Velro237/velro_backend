@@ -1167,10 +1167,23 @@ class UserViewSet(StandardResponseViewSet):
                 message = 'ID verification session created successfully'
             
             # Update user's identity verification status based on session status
-            if session_data['status'].lower() == 'approved':
-                user.is_identity_verified = 'completed'
-            elif session_data['status'].lower() == 'declined' or session_data['status'].lower() == 'rejected':
-                user.is_identity_verified = 'rejected'
+            status_lower = session_data['status'].lower()
+            if status_lower == 'approved':
+                user.is_identity_verified = 'approved'
+            elif status_lower in ['declined', 'rejected']:
+                user.is_identity_verified = 'declined'
+            elif status_lower == 'in progress':
+                user.is_identity_verified = 'in_progress'
+            elif status_lower == 'kyc expired':
+                user.is_identity_verified = 'kyc_expired'
+            elif status_lower == 'in review':
+                user.is_identity_verified = 'in_review'
+            elif status_lower == 'expired':
+                user.is_identity_verified = 'expired'
+            elif status_lower == 'abandoned':
+                user.is_identity_verified = 'abandoned'
+            elif status_lower == 'not started':
+                user.is_identity_verified = 'not_started'
             else:
                 user.is_identity_verified = 'pending'
             
@@ -1205,6 +1218,9 @@ class UserViewSet(StandardResponseViewSet):
         user_id_param = request.query_params.get('user_id')
         session_id = request.query_params.get('session_id')
         
+        # Use the Didit API endpoint based on documentation
+        DIDIT_SESSION_API_URL = "https://verification.didit.me/v2/session/{session_id}/decision/"
+        
         # If user_id is provided and current user is admin, allow checking other users
         if user_id_param and request.user.is_staff:
             try:
@@ -1224,7 +1240,7 @@ class UserViewSet(StandardResponseViewSet):
                 
                 if not verification_session:
                     # No verification sessions found, return the user profile with default status
-                    user.is_identity_verified = 'not_start'  # Add a new status "not_start"
+                    user.is_identity_verified = 'not_started'  # Default status when no verification has been attempted
                     user.save()
                     
                     return standard_response(
@@ -1258,9 +1274,8 @@ class UserViewSet(StandardResponseViewSet):
                 }
                 
                 # Make API call to Didit to get the current status
-                # The endpoint URL needs to be adjusted based on Didit's API documentation
                 response = requests.get(
-                    f"{settings.DIDIT_API_BASE_URL}/session/{verification_session.session_id}",
+                    DIDIT_SESSION_API_URL.format(session_id=verification_session.session_id),
                     headers=headers
                 )
                 
@@ -1274,13 +1289,21 @@ class UserViewSet(StandardResponseViewSet):
                     
                     # Map Didit status to our internal status
                     if didit_status == 'approved':
-                        user.is_identity_verified = 'completed'
+                        user.is_identity_verified = 'approved'
                     elif didit_status in ['declined', 'rejected']:
-                        user.is_identity_verified = 'rejected'
+                        user.is_identity_verified = 'declined'
                     elif didit_status == 'expired':
-                        user.is_identity_verified = 'rejected'
+                        user.is_identity_verified = 'expired'
                     elif didit_status == 'not started':
-                        user.is_identity_verified = 'not_start'
+                        user.is_identity_verified = 'not_started'
+                    elif didit_status == 'in progress':
+                        user.is_identity_verified = 'in_progress'
+                    elif didit_status == 'kyc expired':
+                        user.is_identity_verified = 'kyc_expired'
+                    elif didit_status == 'in review':
+                        user.is_identity_verified = 'in_review'
+                    elif didit_status == 'abandoned':
+                        user.is_identity_verified = 'abandoned'
                     else:
                         user.is_identity_verified = 'pending'
                     
@@ -1290,11 +1313,21 @@ class UserViewSet(StandardResponseViewSet):
                     current_status = verification_session.status.lower()
                     
                     if current_status == 'approved':
-                        user.is_identity_verified = 'completed'
-                    elif current_status in ['declined', 'rejected', 'expired']:
-                        user.is_identity_verified = 'rejected'
+                        user.is_identity_verified = 'approved'
+                    elif current_status in ['declined', 'rejected']:
+                        user.is_identity_verified = 'declined'
+                    elif current_status == 'expired':
+                        user.is_identity_verified = 'expired'
                     elif current_status == 'not started':
-                        user.is_identity_verified = 'not_start'
+                        user.is_identity_verified = 'not_started'
+                    elif current_status == 'in progress':
+                        user.is_identity_verified = 'in_progress'
+                    elif current_status == 'kyc expired':
+                        user.is_identity_verified = 'kyc_expired'
+                    elif current_status == 'in review':
+                        user.is_identity_verified = 'in_review'
+                    elif current_status == 'abandoned':
+                        user.is_identity_verified = 'abandoned'
                     else:
                         user.is_identity_verified = 'pending'
                     
@@ -1307,11 +1340,21 @@ class UserViewSet(StandardResponseViewSet):
                 current_status = verification_session.status.lower()
                 
                 if current_status == 'approved':
-                    user.is_identity_verified = 'completed'
+                    user.is_identity_verified = 'approved'
                 elif current_status in ['declined', 'rejected']:
-                    user.is_identity_verified = 'rejected'
+                    user.is_identity_verified = 'declined'
+                elif current_status == 'expired':
+                    user.is_identity_verified = 'expired'
                 elif current_status == 'not started':
-                    user.is_identity_verified = 'not_start'
+                    user.is_identity_verified = 'not_started'
+                elif current_status == 'in progress':
+                    user.is_identity_verified = 'in_progress'
+                elif current_status == 'kyc expired':
+                    user.is_identity_verified = 'kyc_expired'
+                elif current_status == 'in review':
+                    user.is_identity_verified = 'in_review'
+                elif current_status == 'abandoned':
+                    user.is_identity_verified = 'abandoned'
                 else:
                     user.is_identity_verified = 'pending'
                 
@@ -1362,9 +1405,21 @@ class UserViewSet(StandardResponseViewSet):
             current_status = new_status.lower()
             
             if current_status == 'approved':
-                user.is_identity_verified = 'completed'
-            elif current_status == 'declined' or current_status == 'rejected':
-                user.is_identity_verified = 'rejected'
+                user.is_identity_verified = 'approved'
+            elif current_status in ['declined', 'rejected']:
+                user.is_identity_verified = 'declined'
+            elif current_status == 'expired':
+                user.is_identity_verified = 'expired'
+            elif current_status == 'not started':
+                user.is_identity_verified = 'not_started'
+            elif current_status == 'in progress':
+                user.is_identity_verified = 'in_progress'
+            elif current_status == 'kyc expired':
+                user.is_identity_verified = 'kyc_expired'
+            elif current_status == 'in review':
+                user.is_identity_verified = 'in_review'
+            elif current_status == 'abandoned':
+                user.is_identity_verified = 'abandoned'
             else:
                 user.is_identity_verified = 'pending'
                 
