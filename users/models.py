@@ -43,8 +43,16 @@ class IdType(models.Model):
         return self.name
 IDENTITY_VERIFICATION_CHOICES = [
     ('pending', 'Pending'),
+    ('approved', 'Approved'),
+    ('declined', 'Declined'),
     ('rejected', 'Rejected'),
     ('completed', 'Completed'),
+    ('in_progress', 'In Progress'),
+    ('kyc_expired', 'KYC Expired'),
+    ('in_review', 'In Review'),
+    ('expired', 'Expired'),
+    ('abandoned', 'Abandoned'),
+    ('not_started', 'Not Started'),
 ]
 
 class CustomUser(BaseUser):
@@ -55,7 +63,7 @@ class CustomUser(BaseUser):
     google_id = models.CharField(max_length=255, blank=True, null=True, unique=True)
     apple_id = models.CharField(max_length=255, blank=True, null=True, unique=True)
     is_identity_verified = models.CharField(
-        max_length=10,
+        max_length=20,
         choices=IDENTITY_VERIFICATION_CHOICES,
         default='pending',
     )
