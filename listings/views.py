@@ -61,7 +61,7 @@ class IsIdentityVerified(permissions.BasePermission):
             return True
             
         # For write operations, check if user is verified
-        return request.user.is_authenticated and request.user.is_identity_verified == 'completed'
+        return request.user.is_authenticated and request.user.is_identity_verified == 'approved'
 
 class TravelListingViewSet(StandardResponseViewSet):
     """
