@@ -115,10 +115,10 @@ class ListingImage(models.Model):
 
 class Alert(models.Model):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
-    pickup_country = models.ForeignKey('Country', on_delete=models.CASCADE, related_name='pickup_alerts')
-    pickup_region = models.ForeignKey('Region', on_delete=models.CASCADE, related_name='pickup_alerts')
-    destination_country = models.ForeignKey('Country', on_delete=models.CASCADE, related_name='destination_alerts')
-    destination_region = models.ForeignKey('Region', on_delete=models.CASCADE, related_name='destination_alerts')
+    # Use LocationData for storing location information - keep nullable for now
+    pickup_location = models.ForeignKey('LocationData', on_delete=models.CASCADE, related_name='pickup_alerts', null=True, blank=True)
+    destination_location = models.ForeignKey('LocationData', on_delete=models.CASCADE, related_name='destination_alerts', null=True, blank=True)
+    
     from_travel_date = models.DateField()
     to_travel_date = models.DateField(null=True, blank=True)
     notify_for_any_pickup_city = models.BooleanField(default=False)
@@ -129,7 +129,10 @@ class Alert(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
-        return f"Alert: {self.pickup_country} to {self.destination_country} - {self.from_travel_date} to {self.to_travel_date}"
+        pickup = f"{self.pickup_location.name}, {self.pickup_location.country}"
+        destination = f"{self.destination_location.name}, {self.destination_location.country}"
+        to_date = f" to {self.to_travel_date}" if self.to_travel_date else ""
+        return f"Alert: {pickup} to {destination} - {self.from_travel_date}{to_date}"
 
     class Meta:
         ordering = ['-created_at']

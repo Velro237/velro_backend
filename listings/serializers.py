@@ -321,23 +321,20 @@ class PackageRequestSerializer(serializers.ModelSerializer):
 
 class AlertSerializer(serializers.ModelSerializer):
     user = serializers.ReadOnlyField(source='user.username')
-    pickup_country = CountrySerializer(read_only=True)
-    pickup_country_id = serializers.PrimaryKeyRelatedField(queryset=Country.objects.all(), source='pickup_country', write_only=True)
-    pickup_region = RegionSerializer(read_only=True)
-    pickup_region_id = serializers.PrimaryKeyRelatedField(queryset=Region.objects.all(), source='pickup_region', write_only=True)
-    destination_country = CountrySerializer(read_only=True)
-    destination_country_id = serializers.PrimaryKeyRelatedField(queryset=Country.objects.all(), source='destination_country', write_only=True)
-    destination_region = RegionSerializer(read_only=True)
-    destination_region_id = serializers.PrimaryKeyRelatedField(queryset=Region.objects.all(), source='destination_region', write_only=True)
-
+    pickup_location_data = LocationDataSerializer(source='pickup_location', read_only=True)
+    destination_location_data = LocationDataSerializer(source='destination_location', read_only=True)
+    
+    # Direct location input for pickup
+    pickup_location_input = serializers.DictField(write_only=True, required=True)
+    # Direct location input for destination
+    destination_location_input = serializers.DictField(write_only=True, required=True)
+    
     class Meta:
         model = Alert
         fields = [
             'id', 'user',
-            'pickup_country', 'pickup_country_id',
-            'pickup_region', 'pickup_region_id',
-            'destination_country', 'destination_country_id',
-            'destination_region', 'destination_region_id',
+            'pickup_location_data', 'pickup_location_input',
+            'destination_location_data', 'destination_location_input',
             'from_travel_date', 'to_travel_date',
             'notify_for_any_pickup_city', 'notify_for_any_destination_city',
             'notify_me',
@@ -345,8 +342,73 @@ class AlertSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = [
             'user', 'created_at', 'updated_at',
-            'pickup_country', 'pickup_region', 'destination_country', 'destination_region'
+            'pickup_location_data', 'destination_location_data'
         ]
+    
+    def create(self, validated_data):
+        # Extract location data
+        pickup_data = validated_data.pop('pickup_location_input')
+        destination_data = validated_data.pop('destination_location_input')
+        
+        # Create LocationData objects
+        pickup_location = LocationData.objects.create(
+            name=pickup_data.get('name'),
+            country=pickup_data.get('country'),
+            country_code=pickup_data.get('countryCode')
+        )
+        
+        destination_location = LocationData.objects.create(
+            name=destination_data.get('name'),
+            country=destination_data.get('country'),
+            country_code=destination_data.get('countryCode')
+        )
+        
+        # Add locations to validated data
+        validated_data['pickup_location'] = pickup_location
+        validated_data['destination_location'] = destination_location
+        
+        return super().create(validated_data)
+        
+    def update(self, instance, validated_data):
+        # Handle pickup location update
+        if 'pickup_location_input' in validated_data:
+            pickup_data = validated_data.pop('pickup_location_input')
+            
+            # Update existing location or create new one
+            if instance.pickup_location:
+                pickup_location = instance.pickup_location
+                pickup_location.name = pickup_data.get('name')
+                pickup_location.country = pickup_data.get('country')
+                pickup_location.country_code = pickup_data.get('countryCode')
+                pickup_location.save()
+            else:
+                pickup_location = LocationData.objects.create(
+                    name=pickup_data.get('name'),
+                    country=pickup_data.get('country'),
+                    country_code=pickup_data.get('countryCode')
+                )
+            validated_data['pickup_location'] = pickup_location
+            
+        # Handle destination location update
+        if 'destination_location_input' in validated_data:
+            destination_data = validated_data.pop('destination_location_input')
+            
+            # Update existing location or create new one
+            if instance.destination_location:
+                destination_location = instance.destination_location
+                destination_location.name = destination_data.get('name')
+                destination_location.country = destination_data.get('country')
+                destination_location.country_code = destination_data.get('countryCode')
+                destination_location.save()
+            else:
+                destination_location = LocationData.objects.create(
+                    name=destination_data.get('name'),
+                    country=destination_data.get('country'),
+                    country_code=destination_data.get('countryCode')
+                )
+            validated_data['destination_location'] = destination_location
+            
+        return super().update(instance, validated_data)
 
 class ReviewSerializer(serializers.ModelSerializer):
     reviewer = serializers.ReadOnlyField(source='reviewer.username')

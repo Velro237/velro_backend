@@ -615,23 +615,44 @@ class AlertViewSet(StandardResponseViewSet):
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
+        """
+        This view returns alerts filtered by location and date criteria.
+        
+        Query params:
+        - pickup_location_name: Name of pickup location city/region
+        - pickup_location_country: Name of pickup location country
+        - destination_location_name: Name of destination location city/region
+        - destination_location_country: Name of destination location country
+        - from_travel_date: listings with travel_date >= this date (YYYY-MM-DD)
+        - to_travel_date: listings with travel_date <= this date (YYYY-MM-DD)
+        - notify_for_any_pickup_city: filter by notify_for_any_pickup_city (true/false)
+        - notify_for_any_destination_city: filter by notify_for_any_destination_city (true/false)
+        """
         queryset = Alert.objects.all()
-        pickup_country = self.request.query_params.get('pickup_country')
-        pickup_region = self.request.query_params.get('pickup_region')
-        destination_country = self.request.query_params.get('destination_country')
-        destination_region = self.request.query_params.get('destination_region')
+        
+        # Get location filter parameters
+        pickup_location_name = self.request.query_params.get('pickup_location_name')
+        pickup_location_country = self.request.query_params.get('pickup_location_country')
+        destination_location_name = self.request.query_params.get('destination_location_name')
+        destination_location_country = self.request.query_params.get('destination_location_country')
+        
+        # Date and notification filters
         from_travel_date = self.request.query_params.get('from_travel_date')
         to_travel_date = self.request.query_params.get('to_travel_date')
         notify_for_any_pickup_city = self.request.query_params.get('notify_for_any_pickup_city')
         notify_for_any_destination_city = self.request.query_params.get('notify_for_any_destination_city')
-        if pickup_country:
-            queryset = queryset.filter(pickup_country_id=pickup_country)
-        if pickup_region:
-            queryset = queryset.filter(pickup_region_id=pickup_region)
-        if destination_country:
-            queryset = queryset.filter(destination_country_id=destination_country)
-        if destination_region:
-            queryset = queryset.filter(destination_region_id=destination_region)
+        
+        # Apply location filters
+        if pickup_location_name:
+            queryset = queryset.filter(pickup_location__name__icontains=pickup_location_name)
+        if pickup_location_country:
+            queryset = queryset.filter(pickup_location__country__icontains=pickup_location_country)
+        if destination_location_name:
+            queryset = queryset.filter(destination_location__name__icontains=destination_location_name)
+        if destination_location_country:
+            queryset = queryset.filter(destination_location__country__icontains=destination_location_country)
+        
+        # Apply date and notification filters
         if from_travel_date:
             queryset = queryset.filter(from_travel_date__gte=from_travel_date)
         if to_travel_date:

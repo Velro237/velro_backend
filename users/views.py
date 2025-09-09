@@ -205,9 +205,13 @@ class UserViewSet(StandardResponseViewSet):
         # Process location data from request
         data = request.data.copy()
         
-        # Handle pickup_location as user_location for compatibility
+        # Handle location data in different formats
         if 'pickup_location' in data and isinstance(data['pickup_location'], dict):
             data['user_location'] = data.pop('pickup_location')
+        elif 'city_of_residence' in data and isinstance(data['city_of_residence'], dict):
+            data['user_location'] = data.pop('city_of_residence')
+        elif 'location' in data and isinstance(data['location'], dict):
+            data['user_location'] = data.pop('location')
             
         # Create the user with location data
         serializer = UserRegistrationSerializer(data=data)
