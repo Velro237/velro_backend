@@ -129,12 +129,28 @@ class IdTypeSerializer(serializers.ModelSerializer):
         fields = ['id', 'name', 'description']
 
 class ProfileSerializer(serializers.ModelSerializer):
+    # Legacy fields - will be deprecated
     city_of_residence = RegionSerializer(read_only=True)
     city_of_residence_id = serializers.PrimaryKeyRelatedField(queryset=Region.objects.all(), source='city_of_residence', write_only=True, required=False)
-    id_type = IdTypeSerializer(read_only=True)
-    id_type_id = serializers.PrimaryKeyRelatedField(queryset=IdType.objects.all(), source='id_type', write_only=True, required=False)
     issue_country = CountrySerializer(read_only=True)
     issue_country_id = serializers.PrimaryKeyRelatedField(queryset=Country.objects.all(), source='issue_country', write_only=True, required=False)
+    
+    # New field for direct location data
+    user_location_data = serializers.SerializerMethodField(read_only=True)
+    user_location_input = serializers.DictField(write_only=True, required=False)
+    
+    id_type = IdTypeSerializer(read_only=True)
+    id_type_id = serializers.PrimaryKeyRelatedField(queryset=IdType.objects.all(), source='id_type', write_only=True, required=False)
+    
+    def get_user_location_data(self, obj):
+        if obj.user_location:
+            return {
+                'id': obj.user_location.id,
+                'name': obj.user_location.name,
+                'country': obj.user_location.country,
+                'country_code': obj.user_location.country_code
+            }
+        return None
    
     profile_picture = serializers.ImageField(write_only=True, required=False)
     front_side_identity_card = serializers.ImageField(write_only=True, required=False)
@@ -175,12 +191,16 @@ class ProfileSerializer(serializers.ModelSerializer):
             'selfie_photo_url', 
             'selfie_photo', 
             'address',
+            # Legacy location fields
             'city_of_residence', 
             'city_of_residence_id',
-            'id_type', 
-            'id_type_id',
             'issue_country', 
             'issue_country_id',
+            # New location fields
+            'user_location_data',
+            'user_location_input',
+            'id_type', 
+            'id_type_id',
             'front_side_identity_card_url', 
             'front_side_identity_card', 
             'back_side_identity_card_url', 
@@ -188,7 +208,7 @@ class ProfileSerializer(serializers.ModelSerializer):
             'created_at', 
             'updated_at'
         )
-        read_only_fields = ('created_at', 'updated_at', 'city_of_residence', 'id_type', 'issue_country')
+        read_only_fields = ('created_at', 'updated_at', 'city_of_residence', 'id_type', 'issue_country', 'user_location_data')
     
     def create(self, validated_data):
         profile_picture = validated_data.pop('profile_picture', None)
@@ -213,6 +233,42 @@ class ProfileSerializer(serializers.ModelSerializer):
         front_side_identity_card = validated_data.pop('front_side_identity_card', None)
         back_side_identity_card = validated_data.pop('back_side_identity_card', None)
         selfie_photo = validated_data.pop('selfie_photo', None)
+        
+        # Handle new location format
+        user_location_input = validated_data.pop('user_location_input', None)
+        if user_location_input and isinstance(user_location_input, dict):
+            # Check if we have the required location fields
+            if 'name' in user_location_input and 'country' in user_location_input and 'countryCode' in user_location_input:
+                from listings.models import LocationData
+                
+                # Create or get LocationData object
+                user_location, created = LocationData.objects.get_or_create(
+                    name=user_location_input['name'],
+                    country=user_location_input['country'],
+                    country_code=user_location_input['countryCode']
+                )
+                
+                # Link it to the profile
+                instance.user_location = user_location
+                
+                # Also store in preferences for backward compatibility
+                preferences = instance.preferences
+                if isinstance(preferences, str) and preferences.strip():
+                    import json
+                    try:
+                        preferences = json.loads(preferences)
+                    except:
+                        preferences = {}
+                elif not isinstance(preferences, dict):
+                    preferences = {}
+                    
+                preferences['location'] = {
+                    'id': user_location.id,
+                    'name': user_location.name,
+                    'country': user_location.country,
+                    'country_code': user_location.country_code
+                }
+                instance.preferences = preferences
 
         # Update Profile fields
         for attr, value in validated_data.items():

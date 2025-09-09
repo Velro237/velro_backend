@@ -95,9 +95,12 @@ class Profile(models.Model):
     travel_history = models.TextField(blank=True)
     preferences = models.TextField(blank=True)
     address = models.TextField(blank=True, null=True)
+    # Legacy fields - will be deprecated
     city_of_residence = models.ForeignKey("listings.Region", on_delete=models.SET_NULL, null=True, blank=True, related_name='residents')
-    id_type = models.ForeignKey(IdType, on_delete=models.SET_NULL, null=True, blank=True)
     issue_country = models.ForeignKey("listings.Country", on_delete=models.SET_NULL, null=True, blank=True)
+    # New field for user location using LocationData
+    user_location = models.ForeignKey("listings.LocationData", on_delete=models.SET_NULL, null=True, blank=True, related_name='user_profiles')
+    id_type = models.ForeignKey(IdType, on_delete=models.SET_NULL, null=True, blank=True)
     
     profile_picture_url = models.CharField(max_length=255, blank=True, null=True)
     front_side_identity_card_url = models.CharField(max_length=255, blank=True, null=True)
