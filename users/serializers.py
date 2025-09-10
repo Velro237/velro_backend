@@ -228,6 +228,28 @@ class ProfileSerializer(serializers.ModelSerializer):
         instance.save() 
         return instance
 
+    def to_internal_value(self, data):
+        """Handle form data with nested location fields"""
+        # Handle form data format for user_location_input
+        location_name = data.get('user_location_input[name]')
+        location_country = data.get('user_location_input[country]') 
+        location_country_code = data.get('user_location_input[countryCode]')
+        
+        if location_name and location_country and location_country_code:
+            # Convert form data to nested dict format
+            data = data.copy()  # Don't modify original
+            data['user_location_input'] = {
+                'name': location_name,
+                'country': location_country,
+                'countryCode': location_country_code
+            }
+            # Remove the flattened form fields
+            data.pop('user_location_input[name]', None)
+            data.pop('user_location_input[country]', None)
+            data.pop('user_location_input[countryCode]', None)
+        
+        return super().to_internal_value(data)
+
     def update(self, instance, validated_data):
         profile_picture = validated_data.pop('profile_picture', None)
         front_side_identity_card = validated_data.pop('front_side_identity_card', None)
