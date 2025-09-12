@@ -100,11 +100,23 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
                 and ('country_code' in user_location or 'countryCode' in user_location)
             ):
                 from listings.models import LocationData
-                location, created = LocationData.objects.get_or_create(
-                    name=user_location['name'],
-                    country=user_location['country'],
-                    country_code=user_location.get('country_code') or user_location.get('countryCode')
-                )
+                from django.db import IntegrityError
+                
+                location_data = {
+                    'name': user_location['name'],
+                    'country': user_location['country'],
+                    'country_code': user_location.get('country_code') or user_location.get('countryCode')
+                }
+                
+                try:
+                    location, created = LocationData.objects.get_or_create(**location_data)
+                except IntegrityError:
+                    # Handle race condition where another user created the same location
+                    try:
+                        location = LocationData.objects.get(**location_data)
+                    except LocationData.DoesNotExist:
+                        # If still not found, raise the original error
+                        raise
                 
                 # Store location reference in profile preferences
                 preferences = profile.preferences or {}
@@ -318,15 +330,28 @@ class ProfileSerializer(serializers.ModelSerializer):
             # Check if we have the required location fields
             if 'name' in user_location_input and 'country' in user_location_input and 'countryCode' in user_location_input:
                 from listings.models import LocationData
+                from django.db import IntegrityError
                 
                 print(f"DEBUG ProfileSerializer.update: Creating LocationData with: name={user_location_input['name']}, country={user_location_input['country']}, country_code={user_location_input['countryCode']}")
                 
-                # Create or get LocationData object
-                user_location, created = LocationData.objects.get_or_create(
-                    name=user_location_input['name'],
-                    country=user_location_input['country'],
-                    country_code=user_location_input['countryCode']
-                )
+                # Prepare location data
+                location_data = {
+                    'name': user_location_input['name'],
+                    'country': user_location_input['country'],
+                    'country_code': user_location_input['countryCode']
+                }
+                
+                # Create or get LocationData object with race condition handling
+                try:
+                    user_location, created = LocationData.objects.get_or_create(**location_data)
+                except IntegrityError:
+                    # Handle race condition where another user created the same location
+                    try:
+                        user_location = LocationData.objects.get(**location_data)
+                        created = False
+                    except LocationData.DoesNotExist:
+                        # If still not found, raise the original error
+                        raise
                 
                 print(f"DEBUG ProfileSerializer.update: LocationData created/found: {user_location}, created: {created}")
                 

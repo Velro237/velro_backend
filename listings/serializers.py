@@ -2,6 +2,29 @@ from rest_framework import serializers
 from .models import TravelListing, PackageRequest, Alert, Country, Region, TransportType, PackageType, Review, LocationData
 from decimal import Decimal
 from django.db import models
+from django.db import IntegrityError
+
+def get_or_create_location_data(name, country, country_code):
+    """
+    Helper function to safely create or get LocationData objects 
+    while handling race conditions that could cause duplicate key errors.
+    """
+    location_data = {
+        'name': name,
+        'country': country,
+        'country_code': country_code
+    }
+    
+    try:
+        location, created = LocationData.objects.get_or_create(**location_data)
+        return location
+    except IntegrityError:
+        # Handle race condition where another request created the same location
+        try:
+            return LocationData.objects.get(**location_data)
+        except LocationData.DoesNotExist:
+            # If still not found, raise the original error
+            raise
 
 class CountrySerializer(serializers.ModelSerializer):
     class Meta:
@@ -111,7 +134,7 @@ class TravelListingSerializer(serializers.ModelSerializer):
         if 'pickup_region' in validated_data and isinstance(validated_data['pickup_region'], dict):
             pickup_data = validated_data.pop('pickup_region')
             # Create LocationData object
-            pickup_location = LocationData.objects.create(
+            pickup_location = get_or_create_location_data(
                 name=pickup_data.get('name'),
                 country=pickup_data.get('country'),
                 country_code=pickup_data.get('countryCode')
@@ -126,7 +149,7 @@ class TravelListingSerializer(serializers.ModelSerializer):
         if 'destination_region' in validated_data and isinstance(validated_data['destination_region'], dict):
             dest_data = validated_data.pop('destination_region')
             # Create LocationData object
-            dest_location = LocationData.objects.create(
+            dest_location = get_or_create_location_data(
                 name=dest_data.get('name'),
                 country=dest_data.get('country'),
                 country_code=dest_data.get('countryCode')
@@ -155,7 +178,7 @@ class TravelListingSerializer(serializers.ModelSerializer):
                     pickup_location.country_code = pickup_data.get('countryCode')
                     pickup_location.save()
                 else:
-                    pickup_location = LocationData.objects.create(
+                    pickup_location = get_or_create_location_data(
                         name=pickup_data.get('name'),
                         country=pickup_data.get('country'),
                         country_code=pickup_data.get('countryCode')
@@ -178,7 +201,7 @@ class TravelListingSerializer(serializers.ModelSerializer):
                     dest_location.country_code = dest_data.get('countryCode')
                     dest_location.save()
                 else:
-                    dest_location = LocationData.objects.create(
+                    dest_location = get_or_create_location_data(
                         name=dest_data.get('name'),
                         country=dest_data.get('country'),
                         country_code=dest_data.get('countryCode')
@@ -351,13 +374,13 @@ class AlertSerializer(serializers.ModelSerializer):
         destination_data = validated_data.pop('destination_location_input')
         
         # Create LocationData objects
-        pickup_location = LocationData.objects.create(
+        pickup_location = get_or_create_location_data(
             name=pickup_data.get('name'),
             country=pickup_data.get('country'),
             country_code=pickup_data.get('countryCode')
         )
         
-        destination_location = LocationData.objects.create(
+        destination_location = get_or_create_location_data(
             name=destination_data.get('name'),
             country=destination_data.get('country'),
             country_code=destination_data.get('countryCode')
@@ -382,7 +405,7 @@ class AlertSerializer(serializers.ModelSerializer):
                 pickup_location.country_code = pickup_data.get('countryCode')
                 pickup_location.save()
             else:
-                pickup_location = LocationData.objects.create(
+                pickup_location = get_or_create_location_data(
                     name=pickup_data.get('name'),
                     country=pickup_data.get('country'),
                     country_code=pickup_data.get('countryCode')
@@ -401,7 +424,7 @@ class AlertSerializer(serializers.ModelSerializer):
                 destination_location.country_code = destination_data.get('countryCode')
                 destination_location.save()
             else:
-                destination_location = LocationData.objects.create(
+                destination_location = get_or_create_location_data(
                     name=destination_data.get('name'),
                     country=destination_data.get('country'),
                     country_code=destination_data.get('countryCode')
