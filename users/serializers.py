@@ -7,6 +7,7 @@ from listings.serializers import RegionSerializer, CountrySerializer
 from .models import IdType
 from django.conf import settings
 from config.utils import upload_image, delete_image, optimized_image_url, auto_crop_url
+import json
 User = get_user_model()
 
 class UserSerializer(serializers.ModelSerializer):
