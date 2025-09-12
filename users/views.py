@@ -1,5 +1,5 @@
 from django.shortcuts import render
-from rest_framework import viewsets, status, generics, permissions
+from rest_framework import viewsets, status, generics, permissions, serializers
 from rest_framework.views import APIView
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -1553,19 +1553,36 @@ class ProfileViewSet(StandardResponseViewSet):
                 pass
         except Exception as e:
             print("DEBUG ProfileViewSet.update: logging error:", str(e))
-        instance = self.get_object()
-        if instance.user != request.user:
+        
+        try:
+            instance = self.get_object()
+            if instance.user != request.user:
+                return standard_response(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    error=['You can only update your own profile']
+                )
+            
+            serializer = self.get_serializer(instance, data=request.data)
+            serializer.is_valid(raise_exception=True)
+            self.perform_update(serializer)
             return standard_response(
-                status_code=status.HTTP_403_FORBIDDEN,
-                error=['You can only update your own profile']
+                data=serializer.data,
+                status_code=status.HTTP_200_OK
             )
-        serializer = self.get_serializer(instance, data=request.data)
-        serializer.is_valid(raise_exception=True)
-        self.perform_update(serializer)
-        return standard_response(
-            data=serializer.data,
-            status_code=status.HTTP_200_OK
-        )
+        except serializers.ValidationError as e:
+            # Handle serializer validation errors
+            print(f"DEBUG ProfileViewSet.update: Validation error: {str(e)}")
+            return standard_response(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                error=[f"Validation error: {str(e)}"]
+            )
+        except Exception as e:
+            # Handle any other unexpected errors
+            print(f"DEBUG ProfileViewSet.update: Unexpected error: {str(e)}")
+            return standard_response(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                error=[f"An error occurred while updating profile: {str(e)}"]
+            )
 
     def partial_update(self, request, *args, **kwargs):
         """
@@ -1586,19 +1603,36 @@ class ProfileViewSet(StandardResponseViewSet):
                 pass
         except Exception as e:
             print("DEBUG ProfileViewSet.partial_update: logging error:", str(e))
-        instance = self.get_object()
-        if instance.user != request.user:
+        
+        try:
+            instance = self.get_object()
+            if instance.user != request.user:
+                return standard_response(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    error=['You can only update your own profile']
+                )
+            
+            serializer = self.get_serializer(instance, data=request.data, partial=True)
+            serializer.is_valid(raise_exception=True)
+            self.perform_update(serializer)
             return standard_response(
-                status_code=status.HTTP_403_FORBIDDEN,
-                error=['You can only update your own profile']
+                data=serializer.data,
+                status_code=status.HTTP_200_OK
             )
-        serializer = self.get_serializer(instance, data=request.data, partial=True)
-        serializer.is_valid(raise_exception=True)
-        self.perform_update(serializer)
-        return standard_response(
-            data=serializer.data,
-            status_code=status.HTTP_200_OK
-        )
+        except serializers.ValidationError as e:
+            # Handle serializer validation errors
+            print(f"DEBUG ProfileViewSet.partial_update: Validation error: {str(e)}")
+            return standard_response(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                error=[f"Validation error: {str(e)}"]
+            )
+        except Exception as e:
+            # Handle any other unexpected errors
+            print(f"DEBUG ProfileViewSet.partial_update: Unexpected error: {str(e)}")
+            return standard_response(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                error=[f"An error occurred while updating profile: {str(e)}"]
+            )
 
     def destroy(self, request, *args, **kwargs):
         """
