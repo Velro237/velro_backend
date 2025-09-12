@@ -238,7 +238,7 @@ class ProfileSerializer(serializers.ModelSerializer):
         return instance
 
     def to_internal_value(self, data):
-        """Handle form data with nested location fields"""
+        """Handle both form data and JSON format for location fields"""
         # Handle form data format for user_location_input
         location_name = data.get('user_location_input[name]')
         location_country = data.get('user_location_input[country]') 
@@ -248,19 +248,30 @@ class ProfileSerializer(serializers.ModelSerializer):
         pickup_location_country = data.get('pickup_location_input[country]')
         pickup_location_country_code = data.get('pickup_location_input[countryCode]')
         
+        # Handle JSON format for user_location_input
+        json_location_input = data.get('user_location_input')
+        
         try:
             print(f"DEBUG ProfileSerializer.to_internal_value: content_type= {getattr(getattr(self, 'context', {}).get('request'), 'content_type', None)}")
             print(f"DEBUG ProfileSerializer.to_internal_value: data keys: {list(data.keys())}")
             print(f"DEBUG ProfileSerializer.to_internal_value: user_location_input name={location_name} country={location_country} countryCode={location_country_code}")
             print(f"DEBUG ProfileSerializer.to_internal_value: pickup_location_input name={pickup_location_name} country={pickup_location_country} countryCode={pickup_location_country_code}")
+            print(f"DEBUG ProfileSerializer.to_internal_value: json_location_input={json_location_input}")
         except Exception:
             pass
         
         # Create a mutable copy of data
         data = data.copy()
         
-        # Convert form data to nested dict format
-        if location_name and location_country and location_country_code:
+        # Handle JSON format first (preferred format)
+        if json_location_input and isinstance(json_location_input, dict):
+            # JSON format is already in the correct structure
+            if all(key in json_location_input for key in ['name', 'country', 'countryCode']):
+                print(f"DEBUG ProfileSerializer.to_internal_value: Using JSON format location: {json_location_input}")
+                # Ensure it's properly formatted for the update method
+                data['user_location_input'] = json_location_input
+        # Convert form data to nested dict format (for backward compatibility)
+        elif location_name and location_country and location_country_code:
             data['user_location_input'] = {
                 'name': location_name,
                 'country': location_country,
@@ -270,7 +281,7 @@ class ProfileSerializer(serializers.ModelSerializer):
             data.pop('user_location_input[name]', None)
             data.pop('user_location_input[country]', None)
             data.pop('user_location_input[countryCode]', None)
-            print(f"DEBUG ProfileSerializer.to_internal_value: Converted to nested format: {data.get('user_location_input')}")
+            print(f"DEBUG ProfileSerializer.to_internal_value: Converted form data to nested format: {data.get('user_location_input')}")
         elif pickup_location_name and pickup_location_country and pickup_location_country_code:
             data['user_location_input'] = {
                 'name': pickup_location_name,
