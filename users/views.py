@@ -148,6 +148,17 @@ class UserViewSet(StandardResponseViewSet):
         """
         Ensure users can only update their own account
         """
+        try:
+            print("DEBUG UserViewSet.update: content_type=", request.content_type)
+            print("DEBUG UserViewSet.update: data keys=", list(request.data.keys()))
+            if 'profile' in request.data:
+                try:
+                    profile_payload = request.data.get('profile')
+                    print("DEBUG UserViewSet.update: profile payload type=", type(profile_payload))
+                except Exception as e:
+                    print("DEBUG UserViewSet.update: error reading profile payload:", str(e))
+        except Exception as e:
+            print("DEBUG UserViewSet.update: logging error:", str(e))
         if not request.user.is_superuser and request.user.id != int(kwargs.get('pk')):
             return standard_response(
                 status_code=status.HTTP_403_FORBIDDEN,
@@ -171,6 +182,17 @@ class UserViewSet(StandardResponseViewSet):
         """
         Ensure users can only partially update their own account
         """
+        try:
+            print("DEBUG UserViewSet.partial_update: content_type=", request.content_type)
+            print("DEBUG UserViewSet.partial_update: data keys=", list(request.data.keys()))
+            if 'profile' in request.data:
+                try:
+                    profile_payload = request.data.get('profile')
+                    print("DEBUG UserViewSet.partial_update: profile payload type=", type(profile_payload))
+                except Exception as e:
+                    print("DEBUG UserViewSet.partial_update: error reading profile payload:", str(e))
+        except Exception as e:
+            print("DEBUG UserViewSet.partial_update: logging error:", str(e))
         if not request.user.is_superuser:
             if request.user.id != int(kwargs.get('pk')):
                 return standard_response(
@@ -1516,6 +1538,21 @@ class ProfileViewSet(StandardResponseViewSet):
         """
         Only allow users to update their own profile
         """
+        try:
+            print("DEBUG ProfileViewSet.update: content_type=", request.content_type)
+            print("DEBUG ProfileViewSet.update: data keys=", list(request.data.keys()))
+            print("DEBUG ProfileViewSet.update: pickup_location_input[name]=", request.data.get('pickup_location_input[name]'))
+            print("DEBUG ProfileViewSet.update: pickup_location_input[country]=", request.data.get('pickup_location_input[country]'))
+            print("DEBUG ProfileViewSet.update: pickup_location_input[countryCode]=", request.data.get('pickup_location_input[countryCode]'))
+            print("DEBUG ProfileViewSet.update: user_location_input[name]=", request.data.get('user_location_input[name]'))
+            print("DEBUG ProfileViewSet.update: user_location_input[country]=", request.data.get('user_location_input[country]'))
+            print("DEBUG ProfileViewSet.update: user_location_input[countryCode]=", request.data.get('user_location_input[countryCode]'))
+            try:
+                print("DEBUG ProfileViewSet.update: FILES keys=", list(request.FILES.keys()))
+            except Exception:
+                pass
+        except Exception as e:
+            print("DEBUG ProfileViewSet.update: logging error:", str(e))
         instance = self.get_object()
         if instance.user != request.user:
             return standard_response(
@@ -1534,6 +1571,21 @@ class ProfileViewSet(StandardResponseViewSet):
         """
         Only allow users to partially update their own profile
         """
+        try:
+            print("DEBUG ProfileViewSet.partial_update: content_type=", request.content_type)
+            print("DEBUG ProfileViewSet.partial_update: data keys=", list(request.data.keys()))
+            print("DEBUG ProfileViewSet.partial_update: pickup_location_input[name]=", request.data.get('pickup_location_input[name]'))
+            print("DEBUG ProfileViewSet.partial_update: pickup_location_input[country]=", request.data.get('pickup_location_input[country]'))
+            print("DEBUG ProfileViewSet.partial_update: pickup_location_input[countryCode]=", request.data.get('pickup_location_input[countryCode]'))
+            print("DEBUG ProfileViewSet.partial_update: user_location_input[name]=", request.data.get('user_location_input[name]'))
+            print("DEBUG ProfileViewSet.partial_update: user_location_input[country]=", request.data.get('user_location_input[country]'))
+            print("DEBUG ProfileViewSet.partial_update: user_location_input[countryCode]=", request.data.get('user_location_input[countryCode]'))
+            try:
+                print("DEBUG ProfileViewSet.partial_update: FILES keys=", list(request.FILES.keys()))
+            except Exception:
+                pass
+        except Exception as e:
+            print("DEBUG ProfileViewSet.partial_update: logging error:", str(e))
         instance = self.get_object()
         if instance.user != request.user:
             return standard_response(

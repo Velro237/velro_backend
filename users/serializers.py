@@ -42,7 +42,7 @@ class UserSerializer(serializers.ModelSerializer):
                 location_data['name'] = obj.profile.city_of_residence.name
                 if obj.profile.city_of_residence.country:
                     location_data['country'] = obj.profile.city_of_residence.country.name
-                    location_data['country_code'] = obj.profile.city_of_residence.country.code
+                    location_data['countryCode'] = obj.profile.city_of_residence.country.code
             return location_data if location_data else None
         return None
 
@@ -93,12 +93,17 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
             profile = user.profile
             
             # Process location data if provided
-            if isinstance(user_location, dict) and 'name' in user_location and 'country' in user_location and 'country_code' in user_location:
+            if (
+                isinstance(user_location, dict)
+                and 'name' in user_location
+                and 'country' in user_location
+                and ('country_code' in user_location or 'countryCode' in user_location)
+            ):
                 from listings.models import LocationData
                 location, created = LocationData.objects.get_or_create(
                     name=user_location['name'],
                     country=user_location['country'],
-                    country_code=user_location['country_code']
+                    country_code=user_location.get('country_code') or user_location.get('countryCode')
                 )
                 
                 # Store location reference in profile preferences
@@ -116,7 +121,7 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
                     'id': location.id,
                     'name': location.name,
                     'country': location.country,
-                    'country_code': location.country_code
+                    'countryCode': location.country_code
                 }
                 profile.preferences = preferences
                 profile.save()
@@ -143,13 +148,17 @@ class ProfileSerializer(serializers.ModelSerializer):
     id_type_id = serializers.PrimaryKeyRelatedField(queryset=IdType.objects.all(), source='id_type', write_only=True, required=False)
     
     def get_user_location_data(self, obj):
+        print(f"DEBUG: get_user_location_data called for profile {obj.id}, user_location: {obj.user_location}")
         if obj.user_location:
-            return {
+            location_data = {
                 'id': obj.user_location.id,
                 'name': obj.user_location.name,
                 'country': obj.user_location.country,
-                'country_code': obj.user_location.country_code
+                'countryCode': obj.user_location.country_code
             }
+            print(f"DEBUG: Returning location data: {location_data}")
+            return location_data
+        print("DEBUG: No user_location found, returning None")
         return None
    
     profile_picture = serializers.ImageField(write_only=True, required=False)
@@ -234,10 +243,24 @@ class ProfileSerializer(serializers.ModelSerializer):
         location_name = data.get('user_location_input[name]')
         location_country = data.get('user_location_input[country]') 
         location_country_code = data.get('user_location_input[countryCode]')
+        # Also support pickup_location_input[...] as an alias (backward compatibility)
+        pickup_location_name = data.get('pickup_location_input[name]')
+        pickup_location_country = data.get('pickup_location_input[country]')
+        pickup_location_country_code = data.get('pickup_location_input[countryCode]')
         
+        try:
+            print(f"DEBUG ProfileSerializer.to_internal_value: content_type= {getattr(getattr(self, 'context', {}).get('request'), 'content_type', None)}")
+            print(f"DEBUG ProfileSerializer.to_internal_value: data keys: {list(data.keys())}")
+            print(f"DEBUG ProfileSerializer.to_internal_value: user_location_input name={location_name} country={location_country} countryCode={location_country_code}")
+            print(f"DEBUG ProfileSerializer.to_internal_value: pickup_location_input name={pickup_location_name} country={pickup_location_country} countryCode={pickup_location_country_code}")
+        except Exception:
+            pass
+        
+        # Create a mutable copy of data
+        data = data.copy()
+        
+        # Convert form data to nested dict format
         if location_name and location_country and location_country_code:
-            # Convert form data to nested dict format
-            data = data.copy()  # Don't modify original
             data['user_location_input'] = {
                 'name': location_name,
                 'country': location_country,
@@ -247,10 +270,30 @@ class ProfileSerializer(serializers.ModelSerializer):
             data.pop('user_location_input[name]', None)
             data.pop('user_location_input[country]', None)
             data.pop('user_location_input[countryCode]', None)
+            print(f"DEBUG ProfileSerializer.to_internal_value: Converted to nested format: {data.get('user_location_input')}")
+        elif pickup_location_name and pickup_location_country and pickup_location_country_code:
+            data['user_location_input'] = {
+                'name': pickup_location_name,
+                'country': pickup_location_country,
+                'countryCode': pickup_location_country_code
+            }
+            data.pop('pickup_location_input[name]', None)
+            data.pop('pickup_location_input[country]', None)
+            data.pop('pickup_location_input[countryCode]', None)
+            print(f"DEBUG ProfileSerializer.to_internal_value: Converted pickup_* to nested format: {data.get('user_location_input')}")
         
-        return super().to_internal_value(data)
+        # Call parent class to continue validation
+        ret = super().to_internal_value(data)
+        
+        # Ensure user_location_input is included in validated data
+        if 'user_location_input' in data:
+            ret['user_location_input'] = data['user_location_input']
+            print(f"DEBUG ProfileSerializer.to_internal_value: Added user_location_input to ret: {ret['user_location_input']}")
+        
+        return ret
 
     def update(self, instance, validated_data):
+        print(f"DEBUG ProfileSerializer.update: validated_data keys= {list(validated_data.keys())}")
         profile_picture = validated_data.pop('profile_picture', None)
         front_side_identity_card = validated_data.pop('front_side_identity_card', None)
         back_side_identity_card = validated_data.pop('back_side_identity_card', None)
@@ -258,10 +301,14 @@ class ProfileSerializer(serializers.ModelSerializer):
         
         # Handle new location format
         user_location_input = validated_data.pop('user_location_input', None)
+        print(f"DEBUG ProfileSerializer.update: user_location_input= {user_location_input}")
+        
         if user_location_input and isinstance(user_location_input, dict):
             # Check if we have the required location fields
             if 'name' in user_location_input and 'country' in user_location_input and 'countryCode' in user_location_input:
                 from listings.models import LocationData
+                
+                print(f"DEBUG ProfileSerializer.update: Creating LocationData with: name={user_location_input['name']}, country={user_location_input['country']}, country_code={user_location_input['countryCode']}")
                 
                 # Create or get LocationData object
                 user_location, created = LocationData.objects.get_or_create(
@@ -270,8 +317,11 @@ class ProfileSerializer(serializers.ModelSerializer):
                     country_code=user_location_input['countryCode']
                 )
                 
+                print(f"DEBUG ProfileSerializer.update: LocationData created/found: {user_location}, created: {created}")
+                
                 # Link it to the profile
                 instance.user_location = user_location
+                print(f"DEBUG ProfileSerializer.update: Set instance.user_location to: {instance.user_location}")
                 
                 # Also store in preferences for backward compatibility
                 preferences = instance.preferences
@@ -288,17 +338,21 @@ class ProfileSerializer(serializers.ModelSerializer):
                     'id': user_location.id,
                     'name': user_location.name,
                     'country': user_location.country,
-                    'country_code': user_location.country_code
+                    'countryCode': user_location.country_code
                 }
-                instance.preferences = preferences
-
+                # Convert preferences to JSON string
+                instance.preferences = json.dumps(preferences)
+                print(f"DEBUG ProfileSerializer.update: Updated preferences with location: {preferences['location']}")
+            else:
+                print(f"DEBUG ProfileSerializer.update: Missing required location fields in user_location_input: {user_location_input}")
+        else:
+            print(f"DEBUG ProfileSerializer.update: No user_location_input found or not a dict")
+        
         # Update Profile fields
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
 
         if profile_picture:
-            # if instance.profile_picture_url:
-            #     delete_image(instance.profile_picture_url.split('/')[-1].split('.')[0])
             instance.profile_picture_url = upload_image(profile_picture, f"verlo/profile/profile_{instance.user.id}")
         
         if front_side_identity_card:
@@ -311,6 +365,7 @@ class ProfileSerializer(serializers.ModelSerializer):
             instance.selfie_photo_url = upload_image(selfie_photo, f"verlo/selfie/selfie_{instance.user.id}")
 
         instance.save()
+        print(f"DEBUG ProfileSerializer.update: Saved instance with user_location: {instance.user_location}")
         return instance
 
 class UserProfileSerializer(serializers.ModelSerializer):
