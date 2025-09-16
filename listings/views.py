@@ -76,7 +76,7 @@ class TravelListingViewSet(StandardResponseViewSet):
     """
     API endpoint for travel listings
     """
-    queryset = TravelListing.objects.all()
+    queryset = TravelListing.objects.all().order_by('-created_at')
     serializer_class = TravelListingSerializer
     permission_classes = [permissions.IsAuthenticated, IsOwnerOrReadOnly, IsIdentityVerified]
 
@@ -96,6 +96,7 @@ class TravelListingViewSet(StandardResponseViewSet):
         This view returns a list of travel listings with the following visibility rules:
         - Published listings are visible to all users (authenticated and anonymous)
         - Drafted, completed, and canceled listings are only visible to their owners (if authenticated)
+        - For delete operations, authenticated users can delete any of their own listings regardless of status
         Can be filtered by pickup location, destination, date (from and above), and status.
         Query params:
         - pickup_country: ID of the pickup country
@@ -113,7 +114,11 @@ class TravelListingViewSet(StandardResponseViewSet):
         - travel_date: listings with travel_date >= this date (YYYY-MM-DD)
         - status: filter by status
         """
-        queryset = TravelListing.objects.all()
+        queryset = TravelListing.objects.all().order_by('-created_at')
+        
+        # For delete operations, allow authenticated users to access their own listings regardless of status
+        if self.action == 'destroy' and self.request.user.is_authenticated:
+            return TravelListing.objects.filter(user=self.request.user)
         pickup_country = self.request.query_params.get('pickup_country', None)
         pickup_region = self.request.query_params.get('pickup_region', None)
         destination_country = self.request.query_params.get('destination_country', None)
@@ -205,6 +210,48 @@ class TravelListingViewSet(StandardResponseViewSet):
         listings = TravelListing.objects.filter(user=request.user)
         serializer = self.get_serializer(listings, many=True)
         return self._standardize_response(Response(serializer.data))
+
+    def destroy(self, request, *args, **kwargs):
+        """
+        Custom destroy method to handle deletion with better error handling.
+        """
+        try:
+            # Get the listing ID from URL
+            listing_id = kwargs.get('pk')
+            
+            # Check if the listing exists and belongs to the user
+            try:
+                listing = TravelListing.objects.get(id=listing_id, user=request.user)
+            except TravelListing.DoesNotExist:
+                # Check if the listing exists at all
+                if TravelListing.objects.filter(id=listing_id).exists():
+                    return self._standardize_response(
+                        Response(
+                            {"detail": "You do not have permission to delete this listing."},
+                            status=status.HTTP_403_FORBIDDEN
+                        )
+                    )
+                else:
+                    return self._standardize_response(
+                        Response(
+                            {"detail": "Travel listing not found."},
+                            status=status.HTTP_404_NOT_FOUND
+                        )
+                    )
+            
+            # Delete the listing
+            listing.delete()
+            
+            # Return a proper 204 No Content response without standardization
+            return Response(status=status.HTTP_204_NO_CONTENT)
+            
+        except Exception as e:
+            return self._standardize_response(
+                Response(
+                    {"detail": f"An error occurred while deleting the listing: {str(e)}"},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                )
+            )
 
     @action(detail=True, methods=['post'])
     def complete(self, request, pk=None):
