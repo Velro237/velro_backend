@@ -1,8 +1,10 @@
 from rest_framework import serializers
-from .models import TravelListing, PackageRequest, Alert, Country, Region, TransportType, PackageType, Review, LocationData
+from .models import TravelListing, PackageRequest, Alert, Country, Region, TransportType, PackageType, Review, \
+    LocationData
 from decimal import Decimal
 from django.db import models
 from django.db import IntegrityError
+
 
 def get_or_create_location_data(name, country, country_code):
     """
@@ -14,7 +16,7 @@ def get_or_create_location_data(name, country, country_code):
         'country': country,
         'country_code': country_code
     }
-    
+
     try:
         location, created = LocationData.objects.get_or_create(**location_data)
         return location
@@ -26,11 +28,13 @@ def get_or_create_location_data(name, country, country_code):
             # If still not found, raise the original error
             raise
 
+
 class CountrySerializer(serializers.ModelSerializer):
     class Meta:
         model = Country
         fields = ['id', 'name', 'code', 'is_popular', 'created_at', 'updated_at']
         read_only_fields = ['created_at', 'updated_at']
+
 
 class RegionSerializer(serializers.ModelSerializer):
     country_name = serializers.CharField(source='country.name', read_only=True)
@@ -39,6 +43,7 @@ class RegionSerializer(serializers.ModelSerializer):
         model = Region
         fields = ['id', 'name', 'country', 'country_name', 'created_at', 'updated_at']
         read_only_fields = ['created_at', 'updated_at']
+
 
 class RegionWithCountrySerializer(serializers.ModelSerializer):
     display_name = serializers.SerializerMethodField()
@@ -50,45 +55,58 @@ class RegionWithCountrySerializer(serializers.ModelSerializer):
     def get_display_name(self, obj):
         return f"{obj.name}, {obj.country.name}"
 
+
 class TransportTypeSerializer(serializers.ModelSerializer):
     class Meta:
         model = TransportType
         fields = ['id', 'name', 'description']
+
 
 class PackageTypeSerializer(serializers.ModelSerializer):
     class Meta:
         model = PackageType
         fields = ['id', 'name', 'description']
 
+
 class LocationDataSerializer(serializers.ModelSerializer):
     class Meta:
         model = LocationData
         fields = ['id', 'name', 'country', 'country_code', 'created_at']
         read_only_fields = ['id', 'created_at']
+        validators = []
 
 
 class TravelListingSerializer(serializers.ModelSerializer):
     # Legacy fields for backward compatibility
     pickup = RegionWithCountrySerializer(source='pickup_region', read_only=True)
     destination = RegionWithCountrySerializer(source='destination_region', read_only=True)
-    pickup_region_id = serializers.PrimaryKeyRelatedField(queryset=Region.objects.all(), source='pickup_region', write_only=True, required=False)
-    destination_region_id = serializers.PrimaryKeyRelatedField(queryset=Region.objects.all(), source='destination_region', write_only=True, required=False)
-    
+    pickup_region_id = serializers.PrimaryKeyRelatedField(queryset=Region.objects.all(), source='pickup_region',
+                                                          write_only=True, required=False)
+    destination_region_id = serializers.PrimaryKeyRelatedField(queryset=Region.objects.all(),
+                                                               source='destination_region', write_only=True,
+                                                               required=False)
+
     # New location fields
     pickup_location_data = LocationDataSerializer(source='pickup_location', read_only=True)
     destination_location_data = LocationDataSerializer(source='destination_location', read_only=True)
     pickup_region = serializers.DictField(write_only=True, required=False)
     destination_region = serializers.DictField(write_only=True, required=False)
-    
-    mode_of_transport = TransportTypeSerializer(read_only=True)
-    mode_of_transport_id = serializers.PrimaryKeyRelatedField(queryset=TransportType.objects.all(), source='mode_of_transport', write_only=True)
-    
+
+    # mode_of_transport = TransportTypeSerializer(read_only=True)
+    # mode_of_transport_id = serializers.PrimaryKeyRelatedField(
+    #     queryset=TransportType.objects.all(),
+    #     source='mode_of_transport',
+    #     write_only=True,
+    #     required=False,
+    #     allow_null=True
+    # )
+
     def validate(self, data):
         """
         Validate the data for travel listing creation/update based on fullSuitcaseOnly flag
         """
         fullSuitcaseOnly = data.get('fullSuitcaseOnly', False)
-        
+
         # If fullSuitcaseOnly is enabled
         if fullSuitcaseOnly:
             # Price per suitcase must be provided
@@ -96,13 +114,13 @@ class TravelListingSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError({
                     "price_full_suitcase": "Price per suitcase is required when fullSuitcaseOnly is enabled."
                 })
-            
+
             # Set standard values for fullSuitcaseOnly mode
             data['maximum_weight_in_kg'] = 23.00
-            
+
             # Zero out other pricing fields if they're in the data
-            for field in ['price_per_kg', 'price_per_document', 'price_per_phone', 
-                         'price_per_tablet', 'price_per_pc', 'price_per_file']:
+            for field in ['price_per_kg', 'price_per_document', 'price_per_phone',
+                          'price_per_tablet', 'price_per_pc', 'price_per_file']:
                 if field in data:
                     data[field] = 0.00
         else:
@@ -111,23 +129,24 @@ class TravelListingSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError({
                     "price_per_kg": "Price per kg is required when not in fullSuitcaseOnly mode."
                 })
-            
+
         return data
 
     class Meta:
         model = TravelListing
         fields = [
-            'id', 'user', 
+            'id', 'user',
             # Legacy location fields
             'pickup', 'pickup_region_id', 'destination', 'destination_region_id',
             # New location fields
             'pickup_location_data', 'destination_location_data', 'pickup_region', 'destination_region',
-            'travel_date', 'travel_time', 'mode_of_transport', 'mode_of_transport_id', 'maximum_weight_in_kg',
+            'travel_date', 'travel_time', 'maximum_weight_in_kg',
             'notes', 'fullSuitcaseOnly', 'price_per_kg', 'price_per_document', 'price_per_phone',
             'price_per_tablet', 'price_per_pc', 'price_per_file', 'price_full_suitcase', 'currency', 'status',
             'created_at', 'updated_at'
         ]
-        read_only_fields = ['user', 'created_at', 'updated_at', 'pickup', 'destination', 'mode_of_transport', 'pickup_location_data', 'destination_location_data']
+        read_only_fields = ['user', 'created_at', 'updated_at', 'pickup', 'destination',
+                            'pickup_location_data', 'destination_location_data']
 
     def create(self, validated_data):
         # Handle location data in different formats
@@ -145,7 +164,7 @@ class TravelListingSerializer(serializers.ModelSerializer):
             pickup_region = validated_data.pop('pickup_region')
             validated_data['pickup_region'] = pickup_region
             validated_data['pickup_country'] = pickup_region.country
-        
+
         if 'destination_region' in validated_data and isinstance(validated_data['destination_region'], dict):
             dest_data = validated_data.pop('destination_region')
             # Create LocationData object
@@ -160,9 +179,9 @@ class TravelListingSerializer(serializers.ModelSerializer):
             destination_region = validated_data.pop('destination_region')
             validated_data['destination_region'] = destination_region
             validated_data['destination_country'] = destination_region.country
-        
+
         # Note: Validation logic is now handled in the validate method
-        
+
         return super().create(validated_data)
 
     def update(self, instance, validated_data):
@@ -189,7 +208,7 @@ class TravelListingSerializer(serializers.ModelSerializer):
                 pickup_region = validated_data.pop('pickup_region')
                 instance.pickup_region = pickup_region
                 instance.pickup_country = pickup_region.country
-        
+
         if 'destination_region' in validated_data:
             if isinstance(validated_data['destination_region'], dict):
                 dest_data = validated_data.pop('destination_region')
@@ -212,10 +231,10 @@ class TravelListingSerializer(serializers.ModelSerializer):
                 destination_region = validated_data.pop('destination_region')
                 instance.destination_region = destination_region
                 instance.destination_country = destination_region.country
-            
+
         # Note: Validation logic is now handled in the validate method
         # Any update that changes fullSuitcaseOnly will trigger the validate method
-        
+
         return super().update(instance, validated_data)
 
     def to_representation(self, instance):
@@ -223,6 +242,7 @@ class TravelListingSerializer(serializers.ModelSerializer):
         from users.serializers import UserProfileSerializer  # Lazy import to avoid circular import
         representation['user'] = UserProfileSerializer(instance.user).data
         return representation
+
 
 class PackageRequestSerializer(serializers.ModelSerializer):
     travel_listing = serializers.PrimaryKeyRelatedField(queryset=TravelListing.objects.all())
@@ -234,7 +254,7 @@ class PackageRequestSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'user', 'travel_listing', 'package_description', 'weight',
             'number_of_document', 'number_of_phone', 'number_of_tablet',
-            'number_of_pc', 'number_of_full_suitcase', 
+            'number_of_pc', 'number_of_full_suitcase',
             'package_types', 'total_price', 'status', 'created_at', 'updated_at'
         ]
         read_only_fields = ['user', 'status', 'created_at', 'updated_at', 'total_price']
@@ -294,13 +314,13 @@ class PackageRequestSerializer(serializers.ModelSerializer):
 
     def _calculate_price(self, validated_data, travel_listing):
         price = Decimal('0.0')
-        
+
         # Handle case where fields might not be in validated_data (on update)
         instance = getattr(self, 'instance', None)
 
         def get_value(field_name):
             return validated_data.get(field_name, getattr(instance, field_name, 0))
-            
+
         if travel_listing.fullSuitcaseOnly:
             # In fullSuitcaseOnly mode, only count full suitcases
             num_suitcases = get_value('number_of_full_suitcase')
@@ -308,12 +328,12 @@ class PackageRequestSerializer(serializers.ModelSerializer):
                 price += Decimal(num_suitcases) * Decimal(travel_listing.price_full_suitcase)
         else:
             # Normal mode - calculate based on weight and individual items
-            
+
             # Price per kg
             weight = get_value('weight')
             if weight and travel_listing.price_per_kg:
                 price += Decimal(weight) * Decimal(travel_listing.price_per_kg)
-    
+
             # Price per item
             item_prices = {
                 'number_of_document': travel_listing.price_per_document,
@@ -322,12 +342,12 @@ class PackageRequestSerializer(serializers.ModelSerializer):
                 'number_of_pc': travel_listing.price_per_pc,
                 'number_of_full_suitcase': travel_listing.price_full_suitcase,
             }
-    
+
             for field, item_price in item_prices.items():
                 count = get_value(field)
                 if count and item_price:
                     price += Decimal(count) * Decimal(item_price)
-                    
+
         return price
 
     def create(self, validated_data):
@@ -342,16 +362,17 @@ class PackageRequestSerializer(serializers.ModelSerializer):
         validated_data['total_price'] = total_price
         return super().update(instance, validated_data)
 
+
 class AlertSerializer(serializers.ModelSerializer):
     user = serializers.ReadOnlyField(source='user.username')
     pickup_location_data = LocationDataSerializer(source='pickup_location', read_only=True)
     destination_location_data = LocationDataSerializer(source='destination_location', read_only=True)
-    
+
     # Direct location input for pickup
     pickup_location_input = serializers.DictField(write_only=True, required=True)
     # Direct location input for destination
     destination_location_input = serializers.DictField(write_only=True, required=True)
-    
+
     class Meta:
         model = Alert
         fields = [
@@ -367,36 +388,36 @@ class AlertSerializer(serializers.ModelSerializer):
             'user', 'created_at', 'updated_at',
             'pickup_location_data', 'destination_location_data'
         ]
-    
+
     def create(self, validated_data):
         # Extract location data
         pickup_data = validated_data.pop('pickup_location_input')
         destination_data = validated_data.pop('destination_location_input')
-        
+
         # Create LocationData objects
         pickup_location = get_or_create_location_data(
             name=pickup_data.get('name'),
             country=pickup_data.get('country'),
             country_code=pickup_data.get('countryCode')
         )
-        
+
         destination_location = get_or_create_location_data(
             name=destination_data.get('name'),
             country=destination_data.get('country'),
             country_code=destination_data.get('countryCode')
         )
-        
+
         # Add locations to validated data
         validated_data['pickup_location'] = pickup_location
         validated_data['destination_location'] = destination_location
-        
+
         return super().create(validated_data)
-        
+
     def update(self, instance, validated_data):
         # Handle pickup location update
         if 'pickup_location_input' in validated_data:
             pickup_data = validated_data.pop('pickup_location_input')
-            
+
             # Update existing location or create new one
             if instance.pickup_location:
                 pickup_location = instance.pickup_location
@@ -411,11 +432,11 @@ class AlertSerializer(serializers.ModelSerializer):
                     country_code=pickup_data.get('countryCode')
                 )
             validated_data['pickup_location'] = pickup_location
-            
+
         # Handle destination location update
         if 'destination_location_input' in validated_data:
             destination_data = validated_data.pop('destination_location_input')
-            
+
             # Update existing location or create new one
             if instance.destination_location:
                 destination_location = instance.destination_location
@@ -430,12 +451,14 @@ class AlertSerializer(serializers.ModelSerializer):
                     country_code=destination_data.get('countryCode')
                 )
             validated_data['destination_location'] = destination_location
-            
+
         return super().update(instance, validated_data)
+
 
 class ReviewSerializer(serializers.ModelSerializer):
     reviewer = serializers.ReadOnlyField(source='reviewer.username')
     travel_listing = serializers.PrimaryKeyRelatedField(read_only=True)
+
     class Meta:
         model = Review
         fields = ['id', 'travel_listing', 'package_request', 'reviewer', 'rate', 'description', 'created_at']
@@ -460,4 +483,4 @@ class ReviewSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         # travel_listing is set in validate
-        return super().create(validated_data) 
+        return super().create(validated_data)
