@@ -8,19 +8,22 @@ from .models import IdType
 from django.conf import settings
 from config.utils import upload_image, delete_image, optimized_image_url, auto_crop_url
 import json
+
 User = get_user_model()
+
 
 class UserSerializer(serializers.ModelSerializer):
     """
     Serializer for the User model
     """
     location = serializers.SerializerMethodField()
-    
+
     class Meta:
         model = User
-        fields = ['id', 'username', 'email', 'phone_number', 'first_name', 'last_name', 'is_active', 'date_joined', 'profile', 'is_identity_verified', 'is_phone_verified', 'location']
+        fields = ['id', 'username', 'email', 'phone_number', 'first_name', 'last_name', 'is_active', 'date_joined',
+                  'profile', 'is_identity_verified', 'is_phone_verified', 'location']
         read_only_fields = ['id', 'date_joined']
-        
+
     def get_location(self, obj):
         if hasattr(obj, 'profile') and obj.profile:
             # Try to get location from preferences
@@ -47,10 +50,11 @@ class UserSerializer(serializers.ModelSerializer):
             return location_data if location_data else None
         return None
 
+
 class UserRegistrationSerializer(serializers.ModelSerializer):
     # Only using direct location object approach
     user_location = serializers.JSONField(required=False)
-    
+
     class Meta:
         model = User
         fields = ('email', 'username', 'first_name', 'last_name', 'phone_number', 'user_location')
@@ -76,7 +80,7 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         # Extract location data
         user_location = validated_data.pop('user_location', None)
-        
+
         # Ensure phone number is normalized before saving
         validated_data['phone_number'] = ''.join(filter(str.isdigit, validated_data['phone_number']))
         user = User.objects.create(
@@ -88,27 +92,27 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
         )
         user.set_unusable_password()
         user.save()
-        
+
         # Update profile with location data
         if hasattr(user, 'profile') and user_location:
             profile = user.profile
-            
+
             # Process location data if provided
             if (
-                isinstance(user_location, dict)
-                and 'name' in user_location
-                and 'country' in user_location
-                and ('country_code' in user_location or 'countryCode' in user_location)
+                    isinstance(user_location, dict)
+                    and 'name' in user_location
+                    and 'country' in user_location
+                    and ('country_code' in user_location or 'countryCode' in user_location)
             ):
                 from listings.models import LocationData
                 from django.db import IntegrityError
-                
+
                 location_data = {
                     'name': user_location['name'],
                     'country': user_location['country'],
                     'country_code': user_location.get('country_code') or user_location.get('countryCode')
                 }
-                
+
                 try:
                     location, created = LocationData.objects.get_or_create(**location_data)
                 except IntegrityError:
@@ -118,7 +122,7 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
                     except LocationData.DoesNotExist:
                         # If still not found, raise the original error
                         raise
-                
+
                 # Store location reference in profile preferences
                 preferences = profile.preferences or {}
                 if isinstance(preferences, str) and preferences.strip():
@@ -129,7 +133,7 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
                         preferences = {}
                 elif not isinstance(preferences, dict):
                     preferences = {}
-                
+
                 preferences['location'] = {
                     'id': location.id,
                     'name': location.name,
@@ -138,28 +142,33 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
                 }
                 profile.preferences = preferences
                 profile.save()
-            
+
         return user
+
 
 class IdTypeSerializer(serializers.ModelSerializer):
     class Meta:
         model = IdType
         fields = ['id', 'name', 'description']
 
+
 class ProfileSerializer(serializers.ModelSerializer):
     # Legacy fields - will be deprecated
     city_of_residence = RegionSerializer(read_only=True)
-    city_of_residence_id = serializers.PrimaryKeyRelatedField(queryset=Region.objects.all(), source='city_of_residence', write_only=True, required=False)
+    city_of_residence_id = serializers.PrimaryKeyRelatedField(queryset=Region.objects.all(), source='city_of_residence',
+                                                              write_only=True, required=False)
     issue_country = CountrySerializer(read_only=True)
-    issue_country_id = serializers.PrimaryKeyRelatedField(queryset=Country.objects.all(), source='issue_country', write_only=True, required=False)
-    
+    issue_country_id = serializers.PrimaryKeyRelatedField(queryset=Country.objects.all(), source='issue_country',
+                                                          write_only=True, required=False)
+
     # New field for direct location data
     user_location_data = serializers.SerializerMethodField(read_only=True)
     user_location_input = serializers.DictField(write_only=True, required=False)
-    
+
     id_type = IdTypeSerializer(read_only=True)
-    id_type_id = serializers.PrimaryKeyRelatedField(queryset=IdType.objects.all(), source='id_type', write_only=True, required=False)
-    
+    id_type_id = serializers.PrimaryKeyRelatedField(queryset=IdType.objects.all(), source='id_type', write_only=True,
+                                                    required=False)
+
     def get_user_location_data(self, obj):
         print(f"DEBUG: get_user_location_data called for profile {obj.id}, user_location: {obj.user_location}")
         if obj.user_location:
@@ -173,7 +182,7 @@ class ProfileSerializer(serializers.ModelSerializer):
             return location_data
         print("DEBUG: No user_location found, returning None")
         return None
-   
+
     profile_picture = serializers.ImageField(write_only=True, required=False)
     front_side_identity_card = serializers.ImageField(write_only=True, required=False)
     back_side_identity_card = serializers.ImageField(write_only=True, required=False)
@@ -182,7 +191,7 @@ class ProfileSerializer(serializers.ModelSerializer):
     class Meta:
         model = Profile
         fields = (
-            'id',  
+            'id',
             'full_name',
             'gender',
             'date_of_birth',
@@ -206,76 +215,82 @@ class ProfileSerializer(serializers.ModelSerializer):
             'notification_setting',
             'profile_picture',
             'profile_picture_url',
-            'contact_info', 
-            'languages', 
-            'travel_history', 
-            'preferences', 
-            'selfie_photo_url', 
-            'selfie_photo', 
+            'contact_info',
+            'languages',
+            'travel_history',
+            'preferences',
+            'selfie_photo_url',
+            'selfie_photo',
             'address',
             # Legacy location fields
-            'city_of_residence', 
+            'city_of_residence',
             'city_of_residence_id',
-            'issue_country', 
+            'issue_country',
             'issue_country_id',
             # New location fields
             'user_location_data',
             'user_location_input',
-            'id_type', 
+            'id_type',
             'id_type_id',
-            'front_side_identity_card_url', 
-            'front_side_identity_card', 
-            'back_side_identity_card_url', 
+            'front_side_identity_card_url',
+            'front_side_identity_card',
+            'back_side_identity_card_url',
             'back_side_identity_card',
-            'created_at', 
+            'created_at',
             'updated_at'
         )
-        read_only_fields = ('created_at', 'updated_at', 'city_of_residence', 'id_type', 'issue_country', 'user_location_data')
-    
+        read_only_fields = (
+        'created_at', 'updated_at', 'city_of_residence', 'id_type', 'issue_country', 'user_location_data')
+
     def create(self, validated_data):
         profile_picture = validated_data.pop('profile_picture', None)
         front_side_identity_card = validated_data.pop('front_side_identity_card', None)
         back_side_identity_card = validated_data.pop('back_side_identity_card', None)
-        selfie_photo = validated_data.pop('selfie_photo', None) 
+        selfie_photo = validated_data.pop('selfie_photo', None)
 
         instance = Profile.objects.create(**validated_data)
         if profile_picture:
             instance.profile_picture_url = upload_image(profile_picture, f"verlo/profile/profile_{instance.user.id}")
         if front_side_identity_card:
-            instance.front_side_identity_card_url = upload_image(front_side_identity_card, f"verlo/front_id/front_id_{instance.user.id}")
+            instance.front_side_identity_card_url = upload_image(front_side_identity_card,
+                                                                 f"verlo/front_id/front_id_{instance.user.id}")
         if back_side_identity_card:
-            instance.back_side_identity_card_url = upload_image(back_side_identity_card, f"verlo/back_id/back_id_{instance.user.id}")
+            instance.back_side_identity_card_url = upload_image(back_side_identity_card,
+                                                                f"verlo/back_id/back_id_{instance.user.id}")
         if selfie_photo:
-            instance.selfie_photo_url = upload_image(selfie_photo, f"verlo/selfie/selfie_{instance.user.id}")  
-        instance.save() 
+            instance.selfie_photo_url = upload_image(selfie_photo, f"verlo/selfie/selfie_{instance.user.id}")
+        instance.save()
         return instance
 
     def to_internal_value(self, data):
         """Handle both form data and JSON format for location fields"""
         # Handle form data format for user_location_input
         location_name = data.get('user_location_input[name]')
-        location_country = data.get('user_location_input[country]') 
+        location_country = data.get('user_location_input[country]')
         location_country_code = data.get('user_location_input[countryCode]')
         # Also support pickup_location_input[...] as an alias (backward compatibility)
         pickup_location_name = data.get('pickup_location_input[name]')
         pickup_location_country = data.get('pickup_location_input[country]')
         pickup_location_country_code = data.get('pickup_location_input[countryCode]')
-        
+
         # Handle JSON format for user_location_input
         json_location_input = data.get('user_location_input')
-        
+
         try:
-            print(f"DEBUG ProfileSerializer.to_internal_value: content_type= {getattr(getattr(self, 'context', {}).get('request'), 'content_type', None)}")
+            print(
+                f"DEBUG ProfileSerializer.to_internal_value: content_type= {getattr(getattr(self, 'context', {}).get('request'), 'content_type', None)}")
             print(f"DEBUG ProfileSerializer.to_internal_value: data keys: {list(data.keys())}")
-            print(f"DEBUG ProfileSerializer.to_internal_value: user_location_input name={location_name} country={location_country} countryCode={location_country_code}")
-            print(f"DEBUG ProfileSerializer.to_internal_value: pickup_location_input name={pickup_location_name} country={pickup_location_country} countryCode={pickup_location_country_code}")
+            print(
+                f"DEBUG ProfileSerializer.to_internal_value: user_location_input name={location_name} country={location_country} countryCode={location_country_code}")
+            print(
+                f"DEBUG ProfileSerializer.to_internal_value: pickup_location_input name={pickup_location_name} country={pickup_location_country} countryCode={pickup_location_country_code}")
             print(f"DEBUG ProfileSerializer.to_internal_value: json_location_input={json_location_input}")
         except Exception:
             pass
-        
+
         # Create a mutable copy of data
         data = data.copy()
-        
+
         # Handle JSON format first (preferred format)
         if json_location_input and isinstance(json_location_input, dict):
             # JSON format is already in the correct structure
@@ -294,7 +309,8 @@ class ProfileSerializer(serializers.ModelSerializer):
             data.pop('user_location_input[name]', None)
             data.pop('user_location_input[country]', None)
             data.pop('user_location_input[countryCode]', None)
-            print(f"DEBUG ProfileSerializer.to_internal_value: Converted form data to nested format: {data.get('user_location_input')}")
+            print(
+                f"DEBUG ProfileSerializer.to_internal_value: Converted form data to nested format: {data.get('user_location_input')}")
         elif pickup_location_name and pickup_location_country and pickup_location_country_code:
             data['user_location_input'] = {
                 'name': pickup_location_name,
@@ -304,16 +320,18 @@ class ProfileSerializer(serializers.ModelSerializer):
             data.pop('pickup_location_input[name]', None)
             data.pop('pickup_location_input[country]', None)
             data.pop('pickup_location_input[countryCode]', None)
-            print(f"DEBUG ProfileSerializer.to_internal_value: Converted pickup_* to nested format: {data.get('user_location_input')}")
-        
+            print(
+                f"DEBUG ProfileSerializer.to_internal_value: Converted pickup_* to nested format: {data.get('user_location_input')}")
+
         # Call parent class to continue validation
         ret = super().to_internal_value(data)
-        
+
         # Ensure user_location_input is included in validated data
         if 'user_location_input' in data:
             ret['user_location_input'] = data['user_location_input']
-            print(f"DEBUG ProfileSerializer.to_internal_value: Added user_location_input to ret: {ret['user_location_input']}")
-        
+            print(
+                f"DEBUG ProfileSerializer.to_internal_value: Added user_location_input to ret: {ret['user_location_input']}")
+
         return ret
 
     def update(self, instance, validated_data):
@@ -322,26 +340,27 @@ class ProfileSerializer(serializers.ModelSerializer):
         front_side_identity_card = validated_data.pop('front_side_identity_card', None)
         back_side_identity_card = validated_data.pop('back_side_identity_card', None)
         selfie_photo = validated_data.pop('selfie_photo', None)
-        
+
         # Handle new location format
         user_location_input = validated_data.pop('user_location_input', None)
         print(f"DEBUG ProfileSerializer.update: user_location_input= {user_location_input}")
-        
+
         if user_location_input and isinstance(user_location_input, dict):
             # Check if we have the required location fields
             if 'name' in user_location_input and 'country' in user_location_input and 'countryCode' in user_location_input:
                 from listings.models import LocationData
                 from django.db import IntegrityError
-                
-                print(f"DEBUG ProfileSerializer.update: Creating LocationData with: name={user_location_input['name']}, country={user_location_input['country']}, country_code={user_location_input['countryCode']}")
-                
+
+                print(
+                    f"DEBUG ProfileSerializer.update: Creating LocationData with: name={user_location_input['name']}, country={user_location_input['country']}, country_code={user_location_input['countryCode']}")
+
                 # Prepare location data
                 location_data = {
                     'name': user_location_input['name'],
                     'country': user_location_input['country'],
                     'country_code': user_location_input['countryCode']
                 }
-                
+
                 # Create or get LocationData object with race condition handling
                 try:
                     user_location, created = LocationData.objects.get_or_create(**location_data)
@@ -353,13 +372,14 @@ class ProfileSerializer(serializers.ModelSerializer):
                     except LocationData.DoesNotExist:
                         # If still not found, raise the original error
                         raise
-                
-                print(f"DEBUG ProfileSerializer.update: LocationData created/found: {user_location}, created: {created}")
-                
+
+                print(
+                    f"DEBUG ProfileSerializer.update: LocationData created/found: {user_location}, created: {created}")
+
                 # Link it to the profile
                 instance.user_location = user_location
                 print(f"DEBUG ProfileSerializer.update: Set instance.user_location to: {instance.user_location}")
-                
+
                 # Also store in preferences for backward compatibility
                 preferences = instance.preferences
                 if isinstance(preferences, str) and preferences.strip():
@@ -370,7 +390,7 @@ class ProfileSerializer(serializers.ModelSerializer):
                         preferences = {}
                 elif not isinstance(preferences, dict):
                     preferences = {}
-                    
+
                 preferences['location'] = {
                     'id': user_location.id,
                     'name': user_location.name,
@@ -381,29 +401,33 @@ class ProfileSerializer(serializers.ModelSerializer):
                 instance.preferences = json.dumps(preferences)
                 print(f"DEBUG ProfileSerializer.update: Updated preferences with location: {preferences['location']}")
             else:
-                print(f"DEBUG ProfileSerializer.update: Missing required location fields in user_location_input: {user_location_input}")
+                print(
+                    f"DEBUG ProfileSerializer.update: Missing required location fields in user_location_input: {user_location_input}")
         else:
             print(f"DEBUG ProfileSerializer.update: No user_location_input found or not a dict")
-        
+
         # Update Profile fields
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
 
         if profile_picture:
             instance.profile_picture_url = upload_image(profile_picture, f"verlo/profile/profile_{instance.user.id}")
-        
+
         if front_side_identity_card:
-            instance.front_side_identity_card_url = upload_image(front_side_identity_card, f"verlo/front_id/front_id_{instance.user.id}")
-        
+            instance.front_side_identity_card_url = upload_image(front_side_identity_card,
+                                                                 f"verlo/front_id/front_id_{instance.user.id}")
+
         if back_side_identity_card:
-            instance.back_side_identity_card_url = upload_image(back_side_identity_card, f"verlo/back_id/back_id_{instance.user.id}")
-        
+            instance.back_side_identity_card_url = upload_image(back_side_identity_card,
+                                                                f"verlo/back_id/back_id_{instance.user.id}")
+
         if selfie_photo:
             instance.selfie_photo_url = upload_image(selfie_photo, f"verlo/selfie/selfie_{instance.user.id}")
 
         instance.save()
         print(f"DEBUG ProfileSerializer.update: Saved instance with user_location: {instance.user_location}")
         return instance
+
 
 class UserProfileSerializer(serializers.ModelSerializer):
     profile = ProfileSerializer(required=False)
@@ -412,10 +436,10 @@ class UserProfileSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = ('id', 'email', 'username', 'first_name', 'last_name', 'phone_number',
-                 'is_email_verified', 'is_phone_verified', 'is_identity_verified',
-                 'is_profile_completed', 'is_facebook_verified', 'profile', 'verification_status')
+                  'is_email_verified', 'is_phone_verified', 'is_identity_verified',
+                  'is_profile_completed', 'is_facebook_verified', 'profile', 'verification_status')
         read_only_fields = ('id', 'email', 'is_email_verified', 'is_phone_verified',
-                          'is_identity_verified', 'is_profile_completed', 'is_facebook_verified')
+                            'is_identity_verified', 'is_profile_completed', 'is_facebook_verified')
 
     def get_verification_status(self, obj):
         return {
@@ -428,7 +452,7 @@ class UserProfileSerializer(serializers.ModelSerializer):
 
     def update(self, instance, validated_data):
         profile_data = validated_data.pop('profile', None)
-        
+
         # Update User fields
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
@@ -460,11 +484,13 @@ class UserProfileSerializer(serializers.ModelSerializer):
         """
         return data
 
+
 class OTPSerializer(serializers.ModelSerializer):
     class Meta:
         model = OTP
         fields = ('code', 'purpose')
         read_only_fields = ('created_at', 'is_used')
+
 
 class PasswordChangeSerializer(serializers.Serializer):
     old_password = serializers.CharField(required=True)
@@ -476,6 +502,7 @@ class PasswordChangeSerializer(serializers.Serializer):
             raise serializers.ValidationError("New passwords don't match")
         return data
 
+
 class PrivacyPolicyAcceptanceSerializer(serializers.Serializer):
     accepted = serializers.BooleanField(required=True)
 
@@ -483,6 +510,7 @@ class PrivacyPolicyAcceptanceSerializer(serializers.Serializer):
         if not data['accepted']:
             raise serializers.ValidationError("You must accept the privacy policy to continue")
         return data
+
 
 class OTPVerificationSerializer(serializers.Serializer):
     user_id = serializers.IntegerField(required=True)
@@ -504,6 +532,7 @@ class OTPVerificationSerializer(serializers.Serializer):
             raise serializers.ValidationError("OTP must contain only digits")
         return value
 
+
 class ResendOTPSerializer(serializers.Serializer):
     user_id = serializers.IntegerField(required=True)
     purpose = serializers.ChoiceField(
@@ -518,6 +547,7 @@ class ResendOTPSerializer(serializers.Serializer):
         except User.DoesNotExist:
             raise serializers.ValidationError("User not found")
 
+
 class ForgotPasswordSerializer(serializers.Serializer):
     email = serializers.EmailField(required=True)
 
@@ -527,6 +557,7 @@ class ForgotPasswordSerializer(serializers.Serializer):
             return value
         except User.DoesNotExist:
             raise serializers.ValidationError("User with this email does not exist")
+
 
 class ResetPasswordSerializer(serializers.Serializer):
     user_id = serializers.IntegerField(required=True)
@@ -551,6 +582,7 @@ class ResetPasswordSerializer(serializers.Serializer):
             raise serializers.ValidationError({"confirm_password": "Passwords don't match"})
         return data
 
+
 class SetPasswordSerializer(serializers.Serializer):
     user_id = serializers.IntegerField(required=True)
     password = serializers.CharField(write_only=True, min_length=8)
@@ -560,6 +592,7 @@ class SetPasswordSerializer(serializers.Serializer):
         if data['password'] != data['confirm_password']:
             raise serializers.ValidationError({"confirm_password": "Passwords don't match"})
         return data
+
 
 class TelegramUserRegistrationSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, min_length=8)
@@ -610,15 +643,17 @@ class TelegramUserRegistrationSerializer(serializers.ModelSerializer):
         user.save()
         return user
 
+
 class DiditVerificationSessionSerializer(serializers.ModelSerializer):
     class Meta:
         model = DiditVerificationSession
         fields = (
             'id', 'user', 'session_id', 'session_number', 'session_token',
-            'vendor_data', 'metadata', 'status', 'workflow_id', 
+            'vendor_data', 'metadata', 'status', 'workflow_id',
             'callback_url', 'verification_url', 'created_at', 'updated_at'
         )
         read_only_fields = ('created_at', 'updated_at', 'user')
+
 
 class DiditIdVerificationSerializer(serializers.Serializer):
     session_id = serializers.CharField(required=True)
@@ -630,20 +665,22 @@ class DiditIdVerificationSerializer(serializers.Serializer):
     workflow_id = serializers.CharField(required=True)
     callback = serializers.URLField(required=False, allow_blank=True)
     url = serializers.URLField(required=False, allow_blank=True)
-    
+
+
 class DiditPhoneSendSerializer(serializers.Serializer):
     phone_number = serializers.CharField(required=True, help_text="Phone number in E.164 format (e.g. +14155552671)")
-    
+
     def validate_phone_number(self, value):
         # Basic E.164 validation - must start with + followed by digits
         if not value.startswith('+') or not value[1:].isdigit():
             raise serializers.ValidationError("Phone number must be in E.164 format (e.g. +14155552671)")
         return value
-        
+
+
 class DiditPhoneCheckSerializer(serializers.Serializer):
     phone_number = serializers.CharField(required=True, help_text="Phone number in E.164 format (e.g. +14155552671)")
     code = serializers.CharField(required=True, min_length=4, max_length=8)
-    
+
     def validate_phone_number(self, value):
         # Basic E.164 validation - must start with + followed by digits
         if not value.startswith('+') or not value[1:].isdigit():

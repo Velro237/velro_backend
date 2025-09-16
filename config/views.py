@@ -1,10 +1,12 @@
 from rest_framework import viewsets
 from .utils import standard_response
 
+
 class StandardResponseViewSet(viewsets.ModelViewSet):
     """
     Base ViewSet that provides standardized response format
     """
+
     def _standardize_response(self, response):
         if hasattr(response, 'data'):
             return standard_response(
@@ -35,4 +37,4 @@ class StandardResponseViewSet(viewsets.ModelViewSet):
 
     def destroy(self, request, *args, **kwargs):
         response = super().destroy(request, *args, **kwargs)
-        return self._standardize_response(response) 
+        return self._standardize_response(response)

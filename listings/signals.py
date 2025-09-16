@@ -9,19 +9,18 @@ from datetime import date
 
 User = get_user_model()
 
+
 @receiver(post_save, sender=TravelListing)
 def notify_alerts_on_travel_listing(sender, instance, created, **kwargs):
     if not created:
         return
 
-    print(f" {instance.id} - {instance.destination_country} - {instance.destination_region}")
+    print(f" {instance.id} - {instance.destination_location} ")
+
     alerts = Alert.objects.filter(
-        pickup_country=instance.pickup_country,
-        pickup_region=instance.pickup_region,
-        destination_country=instance.destination_country,
-        destination_region=instance.destination_region,
+        pickup_location__country=instance.pickup_location.country if instance.pickup_location else "",
+        destination_location__country=instance.destination_location.country if instance.destination_location else "",
         from_travel_date__lte=instance.travel_date,
-        # notify_me=True,
         is_active=True
     )
 
@@ -30,6 +29,7 @@ def notify_alerts_on_travel_listing(sender, instance, created, **kwargs):
     ) | alerts.filter(
         to_travel_date__gte=instance.travel_date
     )
+
     for alert in alerts.distinct():
         user = alert.user
         notification = Notification.objects.create(
@@ -37,6 +37,5 @@ def notify_alerts_on_travel_listing(sender, instance, created, **kwargs):
             travel_listing=instance,
             message=f"A new travel listing matches your alert: {instance}"
         )
-        # Send notification via Django Channels
         serializer = NotificationSerializer(notification)
-        send_notification_to_user(user.id, serializer.data) 
+        send_notification_to_user(user.id, serializer.data)
