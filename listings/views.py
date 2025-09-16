@@ -67,7 +67,7 @@ class TravelListingViewSet(StandardResponseViewSet):
     """
     API endpoint for travel listings
     """
-    queryset = TravelListing.objects.all()
+    queryset = TravelListing.objects.all().order_by('-created_at')
     serializer_class = TravelListingSerializer
     permission_classes = [permissions.IsAuthenticated, IsOwnerOrReadOnly, IsIdentityVerified]
 
@@ -104,7 +104,7 @@ class TravelListingViewSet(StandardResponseViewSet):
         - travel_date: listings with travel_date >= this date (YYYY-MM-DD)
         - status: filter by status
         """
-        queryset = TravelListing.objects.all()
+        queryset = TravelListing.objects.all().order_by('-created_at')
         pickup_country = self.request.query_params.get('pickup_country', None)
         pickup_region = self.request.query_params.get('pickup_region', None)
         destination_country = self.request.query_params.get('destination_country', None)
