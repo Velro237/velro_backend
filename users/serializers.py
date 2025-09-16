@@ -3,7 +3,6 @@ from django.contrib.auth import get_user_model
 from .models import Profile, OTP, DiditVerificationSession
 from django.utils import timezone
 from listings.models import Region, Country
-from listings.serializers import RegionSerializer, CountrySerializer
 from .models import IdType
 from django.conf import settings
 from config.utils import upload_image, delete_image, optimized_image_url, auto_crop_url
@@ -148,9 +147,9 @@ class IdTypeSerializer(serializers.ModelSerializer):
 
 class ProfileSerializer(serializers.ModelSerializer):
     # Legacy fields - will be deprecated
-    city_of_residence = RegionSerializer(read_only=True)
+    city_of_residence = serializers.SerializerMethodField(read_only=True)
     city_of_residence_id = serializers.PrimaryKeyRelatedField(queryset=Region.objects.all(), source='city_of_residence', write_only=True, required=False)
-    issue_country = CountrySerializer(read_only=True)
+    issue_country = serializers.SerializerMethodField(read_only=True)
     issue_country_id = serializers.PrimaryKeyRelatedField(queryset=Country.objects.all(), source='issue_country', write_only=True, required=False)
     
     # New field for direct location data
@@ -161,7 +160,6 @@ class ProfileSerializer(serializers.ModelSerializer):
     id_type_id = serializers.PrimaryKeyRelatedField(queryset=IdType.objects.all(), source='id_type', write_only=True, required=False)
     
     def get_user_location_data(self, obj):
-        print(f"DEBUG: get_user_location_data called for profile {obj.id}, user_location: {obj.user_location}")
         if obj.user_location:
             location_data = {
                 'id': obj.user_location.id,
@@ -169,9 +167,19 @@ class ProfileSerializer(serializers.ModelSerializer):
                 'country': obj.user_location.country,
                 'countryCode': obj.user_location.country_code
             }
-            print(f"DEBUG: Returning location data: {location_data}")
             return location_data
-        print("DEBUG: No user_location found, returning None")
+        return None
+
+    def get_city_of_residence(self, obj):
+        if obj.city_of_residence:
+            from listings.serializers import RegionSerializer  # Lazy import to avoid circular import
+            return RegionSerializer(obj.city_of_residence).data
+        return None
+
+    def get_issue_country(self, obj):
+        if obj.issue_country:
+            from listings.serializers import CountrySerializer  # Lazy import to avoid circular import
+            return CountrySerializer(obj.issue_country).data
         return None
    
     profile_picture = serializers.ImageField(write_only=True, required=False)
