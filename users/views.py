@@ -34,8 +34,10 @@ from google.oauth2 import id_token
 from google.auth.transport import requests as google_requests
 import jwt
 from datetime import datetime
+from jwt.algorithms import RSAAlgorithm
 
 User = get_user_model()
+
 
 class UserLoginView(APIView):
     permission_classes = [AllowAny]
@@ -81,7 +83,7 @@ class UserLoginView(APIView):
             )
 
         refresh = RefreshToken.for_user(user)
-        
+
         return standard_response(
             data={
                 'access': str(refresh.access_token),
@@ -90,6 +92,7 @@ class UserLoginView(APIView):
             },
             status_code=status.HTTP_200_OK
         )
+
 
 class UserLogoutView(APIView):
     permission_classes = [IsAuthenticated]
@@ -114,6 +117,7 @@ class UserLogoutView(APIView):
                 error=[str(e)]
             )
 
+
 class UserViewSet(StandardResponseViewSet):
     """
     API endpoint for users
@@ -129,7 +133,8 @@ class UserViewSet(StandardResponseViewSet):
         return User.objects.filter(is_superuser=False)
 
     def get_permissions(self):
-        if self.action in ['register', 'verify_otp', 'resend_otp', 'forgot_password', 'verify_phone_firebase', 'validate_otp', 'check_verification_status', 'update_verification_status']:
+        if self.action in ['register', 'verify_otp', 'resend_otp', 'forgot_password', 'verify_phone_firebase',
+                           'validate_otp', 'check_verification_status', 'update_verification_status']:
             return [AllowAny()]
         return super().get_permissions()
 
@@ -164,7 +169,7 @@ class UserViewSet(StandardResponseViewSet):
                 status_code=status.HTTP_403_FORBIDDEN,
                 error=["You can only update your own account"]
             )
-        
+
         partial = kwargs.pop('partial', False)
         instance = self.get_object()
         serializer = self.get_serializer(instance, data=request.data, partial=partial)
@@ -199,7 +204,7 @@ class UserViewSet(StandardResponseViewSet):
                     status_code=status.HTTP_403_FORBIDDEN,
                     error=["You can only update your own account"]
                 )
-        
+
         instance = self.get_object()
         serializer = self.get_serializer(instance, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
@@ -226,7 +231,7 @@ class UserViewSet(StandardResponseViewSet):
     def register(self, request):
         # Process location data from request
         data = request.data.copy()
-        
+
         # Handle location data in different formats
         if 'pickup_location' in data and isinstance(data['pickup_location'], dict):
             data['user_location'] = data.pop('pickup_location')
@@ -234,7 +239,7 @@ class UserViewSet(StandardResponseViewSet):
             data['user_location'] = data.pop('city_of_residence')
         elif 'location' in data and isinstance(data['location'], dict):
             data['user_location'] = data.pop('location')
-            
+
         # Create the user with location data
         serializer = UserRegistrationSerializer(data=data)
         if serializer.is_valid():
@@ -337,7 +342,7 @@ class UserViewSet(StandardResponseViewSet):
             elif purpose == 'password_reset':
                 # You can create a different email template for password reset
                 send_verification_email(user, otp)
-            
+
             return standard_response(
                 data={'message': 'OTP sent successfully'},
                 status_code=status.HTTP_200_OK
@@ -347,7 +352,7 @@ class UserViewSet(StandardResponseViewSet):
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 error=[f'Failed to send OTP: {str(e)}']
             )
-    
+
     @action(detail=False, methods=['post'])
     def forgot_password(self, request):
         verification_method = request.data.get('verification_method')  # 'email' or 'phone'
@@ -407,31 +412,31 @@ class UserViewSet(StandardResponseViewSet):
                     phone_number = user.phone_number
                     if not phone_number.startswith('+'):
                         phone_number = '+' + phone_number
-                        
+
                     # Prepare request data and headers for Didit.me API
                     payload = {
                         "phone_number": phone_number
                     }
-                    
+
                     headers = {
                         "Accept": "application/json",
                         "Content-Type": "application/json",
                         "X-Api-Key": settings.DIDIT_API_KEY
                     }
-                    
+
                     # Make the API request to send verification code
                     response = requests.post(
                         settings.DIDIT_PHONE_SEND_URL,
                         headers=headers,
                         json=payload
                     )
-                    
+
                     # Process the response
                     if response.status_code == 200:
                         response_data = response.json()
                         request_id = response_data.get('request_id')
                         api_status = response_data.get('status')
-                        
+
                         if api_status == "Success":
                             # Create OTP record in database with request_id
                             OTP.objects.create(
@@ -440,7 +445,7 @@ class UserViewSet(StandardResponseViewSet):
                                 request_id=request_id,  # Store request_id in proper field
                                 purpose='password_reset'
                             )
-                            
+
                             return standard_response(
                                 data={
                                     'message': 'Password reset code sent successfully to your phone',
@@ -489,7 +494,7 @@ class UserViewSet(StandardResponseViewSet):
                     status_code=status.HTTP_400_BAD_REQUEST,
                     error=['Invalid old password']
                 )
-            
+
             user.set_password(serializer.validated_data['new_password'])
             user.save()
             return standard_response(
@@ -541,7 +546,7 @@ class UserViewSet(StandardResponseViewSet):
 
         try:
             user = User.objects.get(id=user_id)
-       
+
         except User.DoesNotExist:
             return standard_response(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -573,38 +578,38 @@ class UserViewSet(StandardResponseViewSet):
                 phone_number = user.phone_number
                 if not phone_number.startswith('+'):
                     phone_number = '+' + phone_number
-                
+
                 # Prepare request data and headers for Didit.me API
                 payload = {
                     "phone_number": phone_number,
                     "code": verification_code
                 }
-                
+
                 headers = {
                     "Accept": "application/json",
                     "Content-Type": "application/json",
                     "X-Api-Key": settings.DIDIT_API_KEY
                 }
-                
+
                 # Make the API request to verify code
                 response = requests.post(
                     settings.DIDIT_PHONE_CHECK_URL,
                     headers=headers,
                     json=payload
                 )
-                
+
                 # Process the response
                 if response.status_code == 200:
                     verification_data = response.json()
                     status_result = verification_data.get('status')
-                    
+
                     if status_result != "Approved":
                         message = verification_data.get('message', 'Verification failed')
                         return standard_response(
                             status_code=status.HTTP_400_BAD_REQUEST,
                             error=[message]
                         )
-                        
+
                     # Mark OTP as used
                     OTP.objects.filter(
                         user=user,
@@ -616,13 +621,13 @@ class UserViewSet(StandardResponseViewSet):
                         status_code=status.HTTP_400_BAD_REQUEST,
                         error=[f'Verification API returned error: {response.text}']
                     )
-                    
+
             except Exception as e:
                 return standard_response(
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                     error=[f'An error occurred: {str(e)}']
                 )
-        
+
         else:
             return standard_response(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -637,8 +642,7 @@ class UserViewSet(StandardResponseViewSet):
             data={'message': 'Password reset successful'},
             status_code=status.HTTP_200_OK
         )
-    
-    
+
     ##################################################
     ##################################################            
     # endpoint to send otp code to email or phone number and validate it
@@ -687,7 +691,7 @@ class UserViewSet(StandardResponseViewSet):
             try:
                 # Initialize Twilio client
                 client = Client(settings.TWILIO_ACCOUNT_SID, settings.TWILIO_AUTH_TOKEN)
-                
+
                 # Verify the code
                 verification_check = client.verify.v2.services(settings.TWILIO_VERIFY_SERVICE) \
                     .verification_checks \
@@ -719,6 +723,7 @@ class UserViewSet(StandardResponseViewSet):
                 status_code=status.HTTP_400_BAD_REQUEST,
                 error=['Invalid verification method. Use "email" or "phone"']
             )
+
     ##################################################
     ##################################################
     @action(detail=False, methods=['post'])
@@ -732,36 +737,36 @@ class UserViewSet(StandardResponseViewSet):
                 status_code=status.HTTP_400_BAD_REQUEST,
                 error=[f"{field}: {error[0]}" for field, error in serializer.errors.items()]
             )
-            
+
         user = request.user
         phone_number = serializer.validated_data['phone_number']
-        
+
         # Call Didit.me API to send verification code
         try:
             # Prepare request data and headers
             payload = {
                 "phone_number": phone_number
             }
-            
+
             headers = {
                 "Accept": "application/json",
                 "Content-Type": "application/json",
                 "X-Api-Key": settings.DIDIT_API_KEY
             }
-            
+
             # Make the API request
             response = requests.post(
                 settings.DIDIT_PHONE_SEND_URL,
                 headers=headers,
                 json=payload
             )
-            
+
             # Process the response
             if response.status_code == 200:
                 response_data = response.json()
                 request_id = response_data.get('request_id')
                 api_status = response_data.get('status')
-                
+
                 if api_status == "Success":
                     # Create OTP record in database with request_id in separate field
                     OTP.objects.create(
@@ -770,11 +775,11 @@ class UserViewSet(StandardResponseViewSet):
                         request_id=request_id,  # Store request_id in the proper field
                         purpose='phone_verification'
                     )
-                    
+
                     # Store the phone number in user's profile for later verification
                     user.phone_number = phone_number
                     user.save()
-                    
+
                     return standard_response(
                         data={
                             'message': 'Verification code sent successfully',
@@ -793,7 +798,7 @@ class UserViewSet(StandardResponseViewSet):
                     status_code=status.HTTP_400_BAD_REQUEST,
                     error=[f"API returned error: {response.text}"]
                 )
-                
+
         except Exception as e:
             return standard_response(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -811,11 +816,11 @@ class UserViewSet(StandardResponseViewSet):
                 status_code=status.HTTP_400_BAD_REQUEST,
                 error=[f"{field}: {error[0]}" for field, error in serializer.errors.items()]
             )
-            
+
         user = request.user
         phone_number = serializer.validated_data['phone_number']
         verification_code = serializer.validated_data['code']
-        
+
         # Call Didit.me API to verify the code
         try:
             # Prepare request data and headers
@@ -823,42 +828,42 @@ class UserViewSet(StandardResponseViewSet):
                 "phone_number": phone_number,
                 "code": verification_code
             }
-            
+
             headers = {
                 "Accept": "application/json",
                 "Content-Type": "application/json",
                 "X-Api-Key": settings.DIDIT_API_KEY
             }
-            
+
             # Make the API request
             response = requests.post(
                 settings.DIDIT_PHONE_CHECK_URL,
                 headers=headers,
                 json=payload
             )
-            
+
             # Process the response
             if response.status_code == 200:
                 verification_data = response.json()
                 request_id = verification_data.get('request_id')
                 status_result = verification_data.get('status')
-                
+
                 if status_result == "Approved":
                     # Update user's phone verification status
                     user.is_phone_verified = True
                     user.phone_number = phone_number
                     user.save()
-                    
+
                     # Mark OTPs as used
                     OTP.objects.filter(
                         user=user,
                         purpose='phone_verification',
                         is_used=False
                     ).update(is_used=True)
-                    
+
                     # Get phone details from the response
                     phone_details = verification_data.get('phone', {})
-                    
+
                     return standard_response(
                         data={
                             'message': 'Phone number verified successfully',
@@ -884,7 +889,7 @@ class UserViewSet(StandardResponseViewSet):
                     status_code=status.HTTP_400_BAD_REQUEST,
                     error=[f"Verification API returned error: {response.text}"]
                 )
-                
+
         except Exception as e:
             return standard_response(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -1133,7 +1138,7 @@ class UserViewSet(StandardResponseViewSet):
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 error=[f"An error occurred: {str(e)}"]
             )
-                
+
     @action(detail=False, methods=['post'])
     def verify_id_document(self, request):
         """
@@ -1147,21 +1152,21 @@ class UserViewSet(StandardResponseViewSet):
                 status_code=status.HTTP_400_BAD_REQUEST,
                 error=[f"{field}: {error[0]}" for field, error in serializer.errors.items()]
             )
-            
+
         user = request.user
         session_data = serializer.validated_data
-        
+
         try:
             # Check if a session with this ID already exists for the user
             session_id = session_data['session_id']
             verification_session = None
-            
+
             try:
                 # Try to get existing session
                 verification_session = DiditVerificationSession.objects.get(
                     session_id=session_id
                 )
-                
+
                 # Update the existing session with new data
                 verification_session.session_token = session_data['session_token']
                 verification_session.session_number = session_data.get('session_number')
@@ -1172,9 +1177,9 @@ class UserViewSet(StandardResponseViewSet):
                 verification_session.callback_url = session_data.get('callback', '')
                 verification_session.verification_url = session_data.get('url', '')
                 verification_session.save()
-                
+
                 message = 'ID verification session updated successfully'
-                
+
             except DiditVerificationSession.DoesNotExist:
                 # Create a new session
                 verification_session = DiditVerificationSession.objects.create(
@@ -1189,9 +1194,9 @@ class UserViewSet(StandardResponseViewSet):
                     callback_url=session_data.get('callback', ''),
                     verification_url=session_data.get('url', '')
                 )
-                
+
                 message = 'ID verification session created successfully'
-            
+
             # Update user's identity verification status based on session status
             status_lower = session_data['status'].lower()
             if status_lower == 'approved':
@@ -1212,9 +1217,9 @@ class UserViewSet(StandardResponseViewSet):
                 user.is_identity_verified = 'not_started'
             else:
                 user.is_identity_verified = 'pending'
-            
+
             user.save()
-            
+
             # Return the verification session data
             return standard_response(
                 data={
@@ -1225,13 +1230,13 @@ class UserViewSet(StandardResponseViewSet):
                 },
                 status_code=status.HTTP_200_OK
             )
-                
+
         except Exception as e:
             return standard_response(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 error=[f"An error occurred during ID verification session storage: {str(e)}"]
             )
-            
+
     @action(detail=False, methods=['get'])
     def check_verification_status(self, request):
         """
@@ -1243,10 +1248,10 @@ class UserViewSet(StandardResponseViewSet):
         user = request.user
         user_id_param = request.query_params.get('user_id')
         session_id = request.query_params.get('session_id')
-        
+
         # Use the Didit API endpoint based on documentation
         DIDIT_SESSION_API_URL = "https://verification.didit.me/v2/session/{session_id}/decision/"
-        
+
         # If user_id is provided and current user is admin, allow checking other users
         if user_id_param and request.user.is_staff:
             try:
@@ -1256,19 +1261,19 @@ class UserViewSet(StandardResponseViewSet):
                     status_code=status.HTTP_404_NOT_FOUND,
                     error=[f"User with id {user_id_param} not found"]
                 )
-        
+
         try:
             # Find the most recent verification session for this user if no session_id provided
             if not session_id:
                 verification_session = DiditVerificationSession.objects.filter(
                     user=user
                 ).order_by('-created_at').first()
-                
+
                 if not verification_session:
                     # No verification sessions found, return the user profile with default status
                     user.is_identity_verified = 'not_started'  # Default status when no verification has been attempted
                     user.save()
-                    
+
                     return standard_response(
                         data=UserSerializer(user).data,
                         status_code=status.HTTP_200_OK
@@ -1289,7 +1294,7 @@ class UserViewSet(StandardResponseViewSet):
                         status_code=status.HTTP_404_NOT_FOUND,
                         error=[f"Verification session with id {session_id} not found"]
                     )
-            
+
             # Call Didit.me API to get the latest status
             try:
                 # Prepare headers for Didit.me API
@@ -1298,21 +1303,21 @@ class UserViewSet(StandardResponseViewSet):
                     "Content-Type": "application/json",
                     "X-Api-Key": settings.DIDIT_API_KEY
                 }
-                
+
                 # Make API call to Didit to get the current status
                 response = requests.get(
                     DIDIT_SESSION_API_URL.format(session_id=verification_session.session_id),
                     headers=headers
                 )
-                
+
                 if response.status_code == 200:
                     didit_data = response.json()
                     didit_status = didit_data.get('status', '').lower()
-                    
+
                     # Update the session in our database
                     verification_session.status = didit_data.get('status', verification_session.status)
                     verification_session.save()
-                    
+
                     # Map Didit status to our internal status
                     if didit_status == 'approved':
                         user.is_identity_verified = 'approved'
@@ -1332,12 +1337,12 @@ class UserViewSet(StandardResponseViewSet):
                         user.is_identity_verified = 'abandoned'
                     else:
                         user.is_identity_verified = 'pending'
-                    
+
                     user.save()
                 else:
                     # If API call fails, use the stored status
                     current_status = verification_session.status.lower()
-                    
+
                     if current_status == 'approved':
                         user.is_identity_verified = 'approved'
                     elif current_status in ['declined', 'rejected']:
@@ -1356,15 +1361,15 @@ class UserViewSet(StandardResponseViewSet):
                         user.is_identity_verified = 'abandoned'
                     else:
                         user.is_identity_verified = 'pending'
-                    
+
                     user.save()
-            
+
             except Exception as api_error:
                 # If API call fails, log error and use the stored status
                 print(f"Error calling Didit API: {str(api_error)}")
                 # Use the stored status
                 current_status = verification_session.status.lower()
-                
+
                 if current_status == 'approved':
                     user.is_identity_verified = 'approved'
                 elif current_status in ['declined', 'rejected']:
@@ -1383,21 +1388,21 @@ class UserViewSet(StandardResponseViewSet):
                     user.is_identity_verified = 'abandoned'
                 else:
                     user.is_identity_verified = 'pending'
-                
+
                 user.save()
-            
+
             # Return the complete user profile
             return standard_response(
                 data=UserSerializer(user).data,
                 status_code=status.HTTP_200_OK
             )
-            
+
         except Exception as e:
             return standard_response(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 error=[f"An error occurred while checking verification status: {str(e)}"]
             )
-            
+
     @action(detail=False, methods=['post'])
     def update_verification_status(self, request):
         """
@@ -1405,13 +1410,13 @@ class UserViewSet(StandardResponseViewSet):
         """
         session_id = request.data.get('session_id')
         new_status = request.data.get('status')
-        
+
         if not session_id or not new_status:
             return standard_response(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 error=["session_id and status are required"]
             )
-            
+
         try:
             # Find the verification session
             try:
@@ -1421,15 +1426,15 @@ class UserViewSet(StandardResponseViewSet):
                     status_code=status.HTTP_404_NOT_FOUND,
                     error=[f"Verification session with id {session_id} not found"]
                 )
-                
+
             # Update the session status
             verification_session.status = new_status
             verification_session.save()
-            
+
             # Update user's verification status
             user = verification_session.user
             current_status = new_status.lower()
-            
+
             if current_status == 'approved':
                 user.is_identity_verified = 'approved'
             elif current_status in ['declined', 'rejected']:
@@ -1448,9 +1453,9 @@ class UserViewSet(StandardResponseViewSet):
                 user.is_identity_verified = 'abandoned'
             else:
                 user.is_identity_verified = 'pending'
-                
+
             user.save()
-            
+
             return standard_response(
                 data={
                     'message': 'Verification status updated successfully',
@@ -1459,13 +1464,13 @@ class UserViewSet(StandardResponseViewSet):
                 },
                 status_code=status.HTTP_200_OK
             )
-            
+
         except Exception as e:
             return standard_response(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 error=[f"An error occurred while updating verification status: {str(e)}"]
             )
-            
+
     @action(detail=False, methods=['get'])
     def verification_sessions(self, request):
         """
@@ -1474,19 +1479,20 @@ class UserViewSet(StandardResponseViewSet):
         try:
             user = request.user
             sessions = DiditVerificationSession.objects.filter(user=user).order_by('-created_at')
-            
+
             return standard_response(
                 data={
                     'verification_sessions': DiditVerificationSessionSerializer(sessions, many=True).data
                 },
                 status_code=status.HTTP_200_OK
             )
-            
+
         except Exception as e:
             return standard_response(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 error=[f"An error occurred while fetching verification sessions: {str(e)}"]
             )
+
 
 class ProfileViewSet(StandardResponseViewSet):
     """
@@ -1541,19 +1547,25 @@ class ProfileViewSet(StandardResponseViewSet):
         try:
             print("DEBUG ProfileViewSet.update: content_type=", request.content_type)
             print("DEBUG ProfileViewSet.update: data keys=", list(request.data.keys()))
-            print("DEBUG ProfileViewSet.update: pickup_location_input[name]=", request.data.get('pickup_location_input[name]'))
-            print("DEBUG ProfileViewSet.update: pickup_location_input[country]=", request.data.get('pickup_location_input[country]'))
-            print("DEBUG ProfileViewSet.update: pickup_location_input[countryCode]=", request.data.get('pickup_location_input[countryCode]'))
-            print("DEBUG ProfileViewSet.update: user_location_input[name]=", request.data.get('user_location_input[name]'))
-            print("DEBUG ProfileViewSet.update: user_location_input[country]=", request.data.get('user_location_input[country]'))
-            print("DEBUG ProfileViewSet.update: user_location_input[countryCode]=", request.data.get('user_location_input[countryCode]'))
+            print("DEBUG ProfileViewSet.update: pickup_location_input[name]=",
+                  request.data.get('pickup_location_input[name]'))
+            print("DEBUG ProfileViewSet.update: pickup_location_input[country]=",
+                  request.data.get('pickup_location_input[country]'))
+            print("DEBUG ProfileViewSet.update: pickup_location_input[countryCode]=",
+                  request.data.get('pickup_location_input[countryCode]'))
+            print("DEBUG ProfileViewSet.update: user_location_input[name]=",
+                  request.data.get('user_location_input[name]'))
+            print("DEBUG ProfileViewSet.update: user_location_input[country]=",
+                  request.data.get('user_location_input[country]'))
+            print("DEBUG ProfileViewSet.update: user_location_input[countryCode]=",
+                  request.data.get('user_location_input[countryCode]'))
             try:
                 print("DEBUG ProfileViewSet.update: FILES keys=", list(request.FILES.keys()))
             except Exception:
                 pass
         except Exception as e:
             print("DEBUG ProfileViewSet.update: logging error:", str(e))
-        
+
         try:
             instance = self.get_object()
             if instance.user != request.user:
@@ -1561,7 +1573,7 @@ class ProfileViewSet(StandardResponseViewSet):
                     status_code=status.HTTP_403_FORBIDDEN,
                     error=['You can only update your own profile']
                 )
-            
+
             serializer = self.get_serializer(instance, data=request.data)
             serializer.is_valid(raise_exception=True)
             self.perform_update(serializer)
@@ -1591,19 +1603,25 @@ class ProfileViewSet(StandardResponseViewSet):
         try:
             print("DEBUG ProfileViewSet.partial_update: content_type=", request.content_type)
             print("DEBUG ProfileViewSet.partial_update: data keys=", list(request.data.keys()))
-            print("DEBUG ProfileViewSet.partial_update: pickup_location_input[name]=", request.data.get('pickup_location_input[name]'))
-            print("DEBUG ProfileViewSet.partial_update: pickup_location_input[country]=", request.data.get('pickup_location_input[country]'))
-            print("DEBUG ProfileViewSet.partial_update: pickup_location_input[countryCode]=", request.data.get('pickup_location_input[countryCode]'))
-            print("DEBUG ProfileViewSet.partial_update: user_location_input[name]=", request.data.get('user_location_input[name]'))
-            print("DEBUG ProfileViewSet.partial_update: user_location_input[country]=", request.data.get('user_location_input[country]'))
-            print("DEBUG ProfileViewSet.partial_update: user_location_input[countryCode]=", request.data.get('user_location_input[countryCode]'))
+            print("DEBUG ProfileViewSet.partial_update: pickup_location_input[name]=",
+                  request.data.get('pickup_location_input[name]'))
+            print("DEBUG ProfileViewSet.partial_update: pickup_location_input[country]=",
+                  request.data.get('pickup_location_input[country]'))
+            print("DEBUG ProfileViewSet.partial_update: pickup_location_input[countryCode]=",
+                  request.data.get('pickup_location_input[countryCode]'))
+            print("DEBUG ProfileViewSet.partial_update: user_location_input[name]=",
+                  request.data.get('user_location_input[name]'))
+            print("DEBUG ProfileViewSet.partial_update: user_location_input[country]=",
+                  request.data.get('user_location_input[country]'))
+            print("DEBUG ProfileViewSet.partial_update: user_location_input[countryCode]=",
+                  request.data.get('user_location_input[countryCode]'))
             try:
                 print("DEBUG ProfileViewSet.partial_update: FILES keys=", list(request.FILES.keys()))
             except Exception:
                 pass
         except Exception as e:
             print("DEBUG ProfileViewSet.partial_update: logging error:", str(e))
-        
+
         try:
             instance = self.get_object()
             if instance.user != request.user:
@@ -1611,7 +1629,7 @@ class ProfileViewSet(StandardResponseViewSet):
                     status_code=status.HTTP_403_FORBIDDEN,
                     error=['You can only update your own profile']
                 )
-            
+
             serializer = self.get_serializer(instance, data=request.data, partial=True)
             serializer.is_valid(raise_exception=True)
             self.perform_update(serializer)
@@ -1654,6 +1672,7 @@ class ProfileViewSet(StandardResponseViewSet):
         serializer.save()
         # Profile completion status is automatically updated via the Profile model's save method
 
+
 class TokenRefreshView(BaseTokenRefreshView):
     def post(self, request, *args, **kwargs):
         response = super().post(request, *args, **kwargs)
@@ -1664,6 +1683,7 @@ class TokenRefreshView(BaseTokenRefreshView):
             },
             status_code=response.status_code
         )
+
 
 class GoogleSignInView(APIView):
     permission_classes = [AllowAny]
@@ -1681,8 +1701,8 @@ class GoogleSignInView(APIView):
             print(settings.GOOGLE_CLIENT_ID)
             print(token)
             idinfo = id_token.verify_oauth2_token(
-                token, 
-                google_requests.Request(), 
+                token,
+                google_requests.Request(),
                 settings.GOOGLE_CLIENT_ID
             )
 
@@ -1720,7 +1740,7 @@ class GoogleSignInView(APIView):
 
             # Generate tokens
             refresh = RefreshToken.for_user(user)
-            
+
             return standard_response(
                 data={
                     'access': str(refresh.access_token),
@@ -1741,6 +1761,7 @@ class GoogleSignInView(APIView):
                 error=[f'An error occurred: {str(e)}']
             )
 
+
 class AppleSignInView(APIView):
     permission_classes = [AllowAny]
 
@@ -1753,16 +1774,10 @@ class AppleSignInView(APIView):
             )
 
         try:
-            # Verify the token
-            headers = {
-                'kid': settings.APPLE_KEY_ID
-            }
-            
-            # Get Apple's public key
-            response = requests.get(settings.APPLE_PUBLIC_KEY_URL)
-            public_key = response.json()
-
-            # Verify the token
+            unverified_header = jwt.get_unverified_header(token)
+            apple_keys = requests.get(settings.APPLE_PUBLIC_KEY_URL).json()['keys']
+            key = next(k for k in apple_keys if k['kid'] == unverified_header['kid'])
+            public_key = RSAAlgorithm.from_jwk(key)
             decoded = jwt.decode(
                 token,
                 public_key,
@@ -1772,36 +1787,26 @@ class AppleSignInView(APIView):
             )
 
             # Get user info from the token
-            email = decoded.get('email')
+            email = decoded.get('email') or request.data.get('email')
             apple_id = decoded['sub']
+            full_name = request.data.get('fullName')
 
-            # Try to find existing user
             try:
                 user = CustomUser.objects.get(email=email)
-                # Update Apple ID if not set
                 if not user.apple_id:
                     user.apple_id = apple_id
                     user.save()
+                if full_name:
+                    user.profile.full_name = full_name
+                    user.profile.save()
             except CustomUser.DoesNotExist:
-                # Create new user
-                username = email.split('@')[0]
-                # Ensure username is unique
-                base_username = username
-                counter = 1
-                while CustomUser.objects.filter(username=username).exists():
-                    username = f"{base_username}{counter}"
-                    counter += 1
-
-                user = CustomUser.objects.create(
-                    email=email,
-                    username=username,
-                    apple_id=apple_id,
-                    is_email_verified=True  # Email is verified by Apple
+                return standard_response(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    error=['Please sign up first']
                 )
-
             # Generate tokens
             refresh = RefreshToken.for_user(user)
-            
+
             return standard_response(
                 data={
                     'access': str(refresh.access_token),
@@ -1821,6 +1826,7 @@ class AppleSignInView(APIView):
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 error=[f'An error occurred: {str(e)}']
             )
+
 
 class IdTypeViewSet(StandardResponseViewSet):
     """

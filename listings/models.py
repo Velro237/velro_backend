@@ -5,6 +5,8 @@ from django.conf import settings
 from django.core.validators import MinValueValidator, MaxValueValidator
 from config.utils import upload_image, delete_image, optimized_image_url, auto_crop_url
 from django.contrib.postgres.fields import JSONField
+
+
 class TransportType(models.Model):
     name = models.CharField(max_length=50, unique=True)
     description = models.TextField(blank=True)
@@ -13,6 +15,7 @@ class TransportType(models.Model):
 
     def __str__(self):
         return self.name
+
 
 class TravelListing(models.Model):
     STATUS_CHOICES = [
@@ -25,17 +28,28 @@ class TravelListing(models.Model):
 
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
     # Legacy fields - kept for backwards compatibility
-    pickup_country = models.ForeignKey('Country', on_delete=models.PROTECT, related_name='pickup_listings', null=True, blank=True)
-    pickup_region = models.ForeignKey('Region', on_delete=models.PROTECT, related_name='pickup_listings', null=True, blank=True)
-    destination_country = models.ForeignKey('Country', on_delete=models.PROTECT, related_name='destination_listings', null=True, blank=True)
-    destination_region = models.ForeignKey('Region', on_delete=models.PROTECT, related_name='destination_listings', null=True, blank=True)
-    
+    pickup_country = models.ForeignKey('Country', on_delete=models.PROTECT, related_name='pickup_listings', null=True,
+                                       blank=True)
+    pickup_region = models.ForeignKey('Region', on_delete=models.PROTECT, related_name='pickup_listings', null=True,
+                                      blank=True)
+    destination_country = models.ForeignKey('Country', on_delete=models.PROTECT, related_name='destination_listings',
+                                            null=True, blank=True)
+    destination_region = models.ForeignKey('Region', on_delete=models.PROTECT, related_name='destination_listings',
+                                           null=True, blank=True)
+
     # New fields for direct location data
-    pickup_location = models.ForeignKey('LocationData', on_delete=models.PROTECT, related_name='pickup_listings', null=True, blank=True)
-    destination_location = models.ForeignKey('LocationData', on_delete=models.PROTECT, related_name='destination_listings', null=True, blank=True)
+    pickup_location = models.ForeignKey('LocationData', on_delete=models.PROTECT, related_name='pickup_listings',
+                                        null=True, blank=True)
+    destination_location = models.ForeignKey('LocationData', on_delete=models.PROTECT,
+                                             related_name='destination_listings', null=True, blank=True)
     travel_date = models.DateField()
     travel_time = models.TimeField()
-    mode_of_transport = models.ForeignKey(TransportType, on_delete=models.PROTECT)
+    # mode_of_transport = models.ForeignKey(
+    #     TransportType,
+    #     on_delete=models.PROTECT,
+    #     null=True,
+    #     blank=True
+    # )
     maximum_weight_in_kg = models.DecimalField(max_digits=5, decimal_places=2)
     notes = models.TextField(blank=True)
     fullSuitcaseOnly = models.BooleanField(default=False)
@@ -58,8 +72,9 @@ class TravelListing(models.Model):
         else:
             pickup_name = f"{self.pickup_region.name}, {self.pickup_country.name}" if self.pickup_region else "Unknown"
             destination_name = f"{self.destination_region.name}, {self.destination_country.name}" if self.destination_region else "Unknown"
-            
+
         return f"{pickup_name} to {destination_name} - {self.travel_date}"
+
 
 class PackageType(models.Model):
     name = models.CharField(max_length=50, unique=True)
@@ -69,6 +84,7 @@ class PackageType(models.Model):
 
     def __str__(self):
         return self.name
+
 
 class PackageRequest(models.Model):
     STATUS_CHOICES = [
@@ -81,8 +97,9 @@ class PackageRequest(models.Model):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
     travel_listing = models.ForeignKey(TravelListing, on_delete=models.CASCADE, related_name='package_requests')
     package_description = models.TextField(blank=True)
-    weight = models.DecimalField(max_digits=5, decimal_places=2, default=0.00, help_text="Weight in KG for items not counted by unit.")
-    
+    weight = models.DecimalField(max_digits=5, decimal_places=2, default=0.00,
+                                 help_text="Weight in KG for items not counted by unit.")
+
     number_of_document = models.PositiveIntegerField(default=0)
     number_of_phone = models.PositiveIntegerField(default=0)
     number_of_tablet = models.PositiveIntegerField(default=0)
@@ -99,9 +116,12 @@ class PackageRequest(models.Model):
     def __str__(self):
         return f"Package request from {self.user.username} for {self.travel_listing}"
 
+
 class ListingImage(models.Model):
-    travel_listing = models.ForeignKey(TravelListing, on_delete=models.CASCADE, related_name='images', null=True, blank=True)
-    package_request = models.ForeignKey(PackageRequest, on_delete=models.CASCADE, related_name='images', null=True, blank=True)
+    travel_listing = models.ForeignKey(TravelListing, on_delete=models.CASCADE, related_name='images', null=True,
+                                       blank=True)
+    package_request = models.ForeignKey(PackageRequest, on_delete=models.CASCADE, related_name='images', null=True,
+                                        blank=True)
     image = models.ImageField(upload_to='listings/')
     is_primary = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -110,15 +130,19 @@ class ListingImage(models.Model):
         if self.travel_listing:
             return f"Image for travel listing {self.travel_listing.id}"
         return f"Image for package request {self.package_request.id}"
+
     class Meta:
         ordering = ['-is_primary', '-created_at']
+
 
 class Alert(models.Model):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
     # Use LocationData for storing location information - keep nullable for now
-    pickup_location = models.ForeignKey('LocationData', on_delete=models.CASCADE, related_name='pickup_alerts', null=True, blank=True)
-    destination_location = models.ForeignKey('LocationData', on_delete=models.CASCADE, related_name='destination_alerts', null=True, blank=True)
-    
+    pickup_location = models.ForeignKey('LocationData', on_delete=models.CASCADE, related_name='pickup_alerts',
+                                        null=True, blank=True)
+    destination_location = models.ForeignKey('LocationData', on_delete=models.CASCADE,
+                                             related_name='destination_alerts', null=True, blank=True)
+
     from_travel_date = models.DateField()
     to_travel_date = models.DateField(null=True, blank=True)
     notify_for_any_pickup_city = models.BooleanField(default=False)
@@ -137,6 +161,7 @@ class Alert(models.Model):
     class Meta:
         ordering = ['-created_at']
 
+
 class Country(models.Model):
     name = models.CharField(max_length=100, unique=True)
     code = models.CharField(max_length=3, unique=True)
@@ -151,6 +176,7 @@ class Country(models.Model):
         verbose_name_plural = "Countries"
         ordering = ['name']
 
+
 class Region(models.Model):
     name = models.CharField(max_length=100)
     country = models.ForeignKey(Country, on_delete=models.CASCADE, related_name='regions')
@@ -164,16 +190,17 @@ class Region(models.Model):
         unique_together = ['name', 'country']
         ordering = ['country', 'name']
 
+
 class LocationData(models.Model):
     """Model for storing flexible location data without requiring database entries"""
     name = models.CharField(max_length=100)
     country = models.CharField(max_length=100)
     country_code = models.CharField(max_length=2)
     created_at = models.DateTimeField(auto_now_add=True)
-    
+
     def __str__(self):
         return f"{self.name}, {self.country} ({self.country_code})"
-    
+
     class Meta:
         verbose_name_plural = "Location Data"
         unique_together = ['name', 'country', 'country_code']

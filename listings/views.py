@@ -6,7 +6,8 @@ from rest_framework.response import Response
 from django.db.models import Q
 from datetime import datetime
 from .models import TravelListing, PackageRequest, Alert, Country, Region, Review
-from .serializers import TravelListingSerializer, PackageRequestSerializer, AlertSerializer, CountrySerializer, RegionSerializer, ReviewSerializer, TransportTypeSerializer, PackageTypeSerializer
+from .serializers import TravelListingSerializer, PackageRequestSerializer, AlertSerializer, CountrySerializer, \
+    RegionSerializer, ReviewSerializer, TransportTypeSerializer, PackageTypeSerializer
 from config.views import StandardResponseViewSet
 from rest_framework.permissions import IsAuthenticated, IsAdminUser, AllowAny
 from rest_framework import status
@@ -18,12 +19,15 @@ from messaging.serializers import NotificationSerializer
 from messaging.utils import send_notification_to_user
 from listings.models import TransportType, PackageType
 from reporting.models import EventLog
+
+
 # Create your views here.
 
 class IsOwnerOrReadOnly(permissions.BasePermission):
     """
     Custom permission to only allow owners of an object to edit it.
     """
+
     def has_object_permission(self, request, view, obj):
         # Read permissions are allowed to any authenticated user
         if request.method in permissions.SAFE_METHODS:
@@ -32,6 +36,7 @@ class IsOwnerOrReadOnly(permissions.BasePermission):
         # Write permissions are only allowed to the owner
         return obj.user == request.user
 
+
 class IsPackageRequestOwnerOrTravelListingOwner(permissions.BasePermission):
     """
     Custom permission to only allow:
@@ -39,6 +44,7 @@ class IsPackageRequestOwnerOrTravelListingOwner(permissions.BasePermission):
     - Travel listing owner to change the status of the request
     - Both package request owner and travel listing owner to view the request
     """
+
     def has_object_permission(self, request, view, obj):
         # Allow read access if user is either the package request owner or the travel listing owner
         if request.method in permissions.SAFE_METHODS:
@@ -51,17 +57,20 @@ class IsPackageRequestOwnerOrTravelListingOwner(permissions.BasePermission):
         # For other write operations, only allow package request owner
         return obj.user == request.user
 
+
 class IsIdentityVerified(permissions.BasePermission):
     """
     Custom permission to only allow identity verified users to create travel listings.
     """
+
     def has_permission(self, request, view):
         # Allow read operations for any authenticated user
         if request.method in permissions.SAFE_METHODS:
             return True
-            
+
         # For write operations, check if user is verified
         return request.user.is_authenticated and request.user.is_identity_verified == 'approved'
+
 
 class TravelListingViewSet(StandardResponseViewSet):
     """
@@ -73,7 +82,7 @@ class TravelListingViewSet(StandardResponseViewSet):
 
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)
-    
+
     # auth is required for detail view only, so get all travel listings dont require auth
     def get_permissions(self):
         if self.action in ['create', 'update', 'partial_update', 'destroy']:
@@ -118,13 +127,13 @@ class TravelListingViewSet(StandardResponseViewSet):
         pickup_region_name = self.request.query_params.get('pickup_region_name', None)
         destination_country_name = self.request.query_params.get('destination_country_name', None)
         destination_region_name = self.request.query_params.get('destination_region_name', None)
-        
+
         # New location data filters
         pickup_location_name = self.request.query_params.get('pickup_location_name', None)
         destination_location_name = self.request.query_params.get('destination_location_name', None)
         pickup_location_country = self.request.query_params.get('pickup_location_country', None)
         destination_location_country = self.request.query_params.get('destination_location_country', None)
-        
+
         travel_date = self.request.query_params.get('travel_date', None)
         status = self.request.query_params.get('status', None)
 
@@ -162,18 +171,18 @@ class TravelListingViewSet(StandardResponseViewSet):
 
         # Apply legacy filters using names (case-insensitive, partial match)
         if pickup_country_name:
-            queryset = queryset.filter(Q(pickup_country__name__icontains=pickup_country_name) | 
+            queryset = queryset.filter(Q(pickup_country__name__icontains=pickup_country_name) |
                                        Q(pickup_location__country__icontains=pickup_country_name))
         if pickup_region_name:
-            queryset = queryset.filter(Q(pickup_region__name__icontains=pickup_region_name) | 
+            queryset = queryset.filter(Q(pickup_region__name__icontains=pickup_region_name) |
                                        Q(pickup_location__name__icontains=pickup_region_name))
         if destination_country_name:
-            queryset = queryset.filter(Q(destination_country__name__icontains=destination_country_name) | 
+            queryset = queryset.filter(Q(destination_country__name__icontains=destination_country_name) |
                                        Q(destination_location__country__icontains=destination_country_name))
         if destination_region_name:
-            queryset = queryset.filter(Q(destination_region__name__icontains=destination_region_name) | 
+            queryset = queryset.filter(Q(destination_region__name__icontains=destination_region_name) |
                                        Q(destination_location__name__icontains=destination_region_name))
-        
+
         # Apply filters for new location data
         if pickup_location_name:
             queryset = queryset.filter(pickup_location__name__icontains=pickup_location_name)
@@ -257,11 +266,12 @@ class TravelListingViewSet(StandardResponseViewSet):
                     status=403
                 )
             )
-        
+
         listing.status = 'completed'
         listing.save()
         serializer = self.get_serializer(listing)
         return self._standardize_response(Response(serializer.data))
+
 
 class PackageRequestViewSet(StandardResponseViewSet):
     """
@@ -403,6 +413,7 @@ class PackageRequestViewSet(StandardResponseViewSet):
             Q(user=self.request.user) |  # User is the package request creator
             Q(travel_listing__user=self.request.user)  # User is the travel listing owner
         )
+
     @action(detail=True, methods=['post'], url_path='send-request-message')
     def send_request_in_message(self, request, pk=None):
         """
@@ -452,8 +463,9 @@ class PackageRequestViewSet(StandardResponseViewSet):
 
         if package_request.weight and Decimal(package_request.weight) > 0:
             has_items = True
-            message_lines.append(f"- {package_request.weight}kg of other items ({package_request.package_description or 'not specified'}).")
-        
+            message_lines.append(
+                f"- {package_request.weight}kg of other items ({package_request.package_description or 'not specified'}).")
+
         if not has_items:
             return self._standardize_response(
                 Response(
@@ -520,7 +532,7 @@ class PackageRequestViewSet(StandardResponseViewSet):
         Accept a package request. Only the travel listing owner can accept the request.
         """
         package_request = self.get_object()
-        
+
         # Check if user is the travel listing owner
         if package_request.travel_listing.user != request.user:
             return Response(
@@ -549,7 +561,8 @@ class PackageRequestViewSet(StandardResponseViewSet):
         package_request.save()
         # Update travel listing's available weight and status
         travel_listing = package_request.travel_listing
-        travel_listing.maximum_weight_in_kg = Decimal(travel_listing.maximum_weight_in_kg) - Decimal(package_request.weight)
+        travel_listing.maximum_weight_in_kg = Decimal(travel_listing.maximum_weight_in_kg) - Decimal(
+            package_request.weight)
         if travel_listing.maximum_weight_in_kg <= 0:
             travel_listing.maximum_weight_in_kg = 0
             travel_listing.status = 'fully-booked'
@@ -571,7 +584,7 @@ class PackageRequestViewSet(StandardResponseViewSet):
         Reject a package request. Only the travel listing owner can reject the request.
         """
         package_request = self.get_object()
-        
+
         # Check if user is the travel listing owner
         if package_request.travel_listing.user != request.user:
             return Response(
@@ -615,7 +628,7 @@ class PackageRequestViewSet(StandardResponseViewSet):
         Mark a package request as completed. Only the travel listing owner can complete the request.
         """
         package_request = self.get_object()
-        
+
         # Check if user is the travel listing owner
         if package_request.travel_listing.user != request.user:
             return Response(
@@ -635,7 +648,8 @@ class PackageRequestViewSet(StandardResponseViewSet):
                     "status": "FAILED",
                     "data": {},
                     "status_code": status.HTTP_400_BAD_REQUEST,
-                    "error": [f"Cannot complete request in '{package_request.status}' status. Request must be accepted first."]
+                    "error": [
+                        f"Cannot complete request in '{package_request.status}' status. Request must be accepted first."]
                 },
                 status=status.HTTP_400_BAD_REQUEST
             )
@@ -676,19 +690,22 @@ class AlertViewSet(StandardResponseViewSet):
         - notify_for_any_destination_city: filter by notify_for_any_destination_city (true/false)
         """
         queryset = Alert.objects.all()
-        
+
         # Get location filter parameters
         pickup_location_name = self.request.query_params.get('pickup_location_name')
         pickup_location_country = self.request.query_params.get('pickup_location_country')
         destination_location_name = self.request.query_params.get('destination_location_name')
-        destination_location_country = self.request.query_params.get('destination_location_country')
-        
+        destination_location_country = (
+                self.request.query_params.get('destination_location_country') or
+                self.request.query_params.get('destination_country')
+        )
+
         # Date and notification filters
         from_travel_date = self.request.query_params.get('from_travel_date')
         to_travel_date = self.request.query_params.get('to_travel_date')
         notify_for_any_pickup_city = self.request.query_params.get('notify_for_any_pickup_city')
         notify_for_any_destination_city = self.request.query_params.get('notify_for_any_destination_city')
-        
+
         # Apply location filters
         if pickup_location_name:
             queryset = queryset.filter(pickup_location__name__icontains=pickup_location_name)
@@ -698,7 +715,7 @@ class AlertViewSet(StandardResponseViewSet):
             queryset = queryset.filter(destination_location__name__icontains=destination_location_name)
         if destination_location_country:
             queryset = queryset.filter(destination_location__country__icontains=destination_location_country)
-        
+
         # Apply date and notification filters
         if from_travel_date:
             queryset = queryset.filter(from_travel_date__gte=from_travel_date)
@@ -707,7 +724,8 @@ class AlertViewSet(StandardResponseViewSet):
         if notify_for_any_pickup_city is not None:
             queryset = queryset.filter(notify_for_any_pickup_city=notify_for_any_pickup_city.lower() in ['true', '1'])
         if notify_for_any_destination_city is not None:
-            queryset = queryset.filter(notify_for_any_destination_city=notify_for_any_destination_city.lower() in ['true', '1'])
+            queryset = queryset.filter(
+                notify_for_any_destination_city=notify_for_any_destination_city.lower() in ['true', '1'])
         return queryset
 
     def perform_create(self, serializer):
@@ -735,11 +753,12 @@ class AlertViewSet(StandardResponseViewSet):
                     status=403
                 )
             )
-        
+
         alert.is_active = not alert.is_active
         alert.save()
         serializer = self.get_serializer(alert)
         return self._standardize_response(Response(serializer.data))
+
 
 class CountryViewSet(StandardResponseViewSet):
     """
@@ -754,6 +773,7 @@ class CountryViewSet(StandardResponseViewSet):
         else:
             permission_classes = [AllowAny]
         return [permission() for permission in permission_classes]
+
 
 class RegionViewSet(StandardResponseViewSet):
     """
@@ -793,6 +813,7 @@ class RegionViewSet(StandardResponseViewSet):
                 )
             )
 
+
 class ReviewViewSet(StandardResponseViewSet):
     queryset = Review.objects.all()
     serializer_class = ReviewSerializer
@@ -819,6 +840,7 @@ class ReviewViewSet(StandardResponseViewSet):
         serializer = self.get_serializer(reviews, many=True)
         return self._standardize_response(Response(serializer.data))
 
+
 class IsReviewerOnly(IsAuthenticated):
     def has_object_permission(self, request, view, obj):
         return obj.reviewer == request.user
@@ -837,6 +859,7 @@ class TransportTypeViewset(StandardResponseViewSet):
         else:
             permission_classes = [AllowAny]
         return [permission() for permission in permission_classes]
+
 
 class PackageTypeViewSet(StandardResponseViewSet):
     """

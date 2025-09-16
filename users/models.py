@@ -7,9 +7,11 @@ from django.conf import settings
 
 from config.utils import upload_image, delete_image, optimized_image_url, auto_crop_url
 
+
 class BaseUser(AbstractUser):
     class Meta:
         abstract = True
+
 
 class CustomUserManager(BaseUserManager):
     def create_user(self, email, password=None, **extra_fields):
@@ -33,6 +35,7 @@ class CustomUserManager(BaseUserManager):
 
         return self.create_user(email, password, **extra_fields)
 
+
 class IdType(models.Model):
     name = models.CharField(max_length=50, unique=True)
     description = models.TextField(blank=True)
@@ -41,6 +44,8 @@ class IdType(models.Model):
 
     def __str__(self):
         return self.name
+
+
 IDENTITY_VERIFICATION_CHOICES = [
     ('pending', 'Pending'),
     ('approved', 'Approved'),
@@ -54,6 +59,7 @@ IDENTITY_VERIFICATION_CHOICES = [
     ('abandoned', 'Abandoned'),
     ('not_started', 'Not Started'),
 ]
+
 
 class CustomUser(BaseUser):
     email = models.EmailField(unique=True)
@@ -82,11 +88,12 @@ class CustomUser(BaseUser):
     def save(self, *args, **kwargs):
         # for is profile completed check is is_phone_verified, is_email_verified, and is_identity_verified
         self.is_profile_completed = (
-            self.is_phone_verified and
-            self.is_email_verified and
-            self.is_identity_verified == 'completed'
+                self.is_phone_verified and
+                self.is_email_verified and
+                self.is_identity_verified == 'completed'
         )
         super().save(*args, **kwargs)
+
 
 class Profile(models.Model):
     user = models.OneToOneField(CustomUser, on_delete=models.CASCADE, related_name='profile')
@@ -96,12 +103,14 @@ class Profile(models.Model):
     preferences = models.TextField(blank=True)
     address = models.TextField(blank=True, null=True)
     # Legacy fields - will be deprecated
-    city_of_residence = models.ForeignKey("listings.Region", on_delete=models.SET_NULL, null=True, blank=True, related_name='residents')
+    city_of_residence = models.ForeignKey("listings.Region", on_delete=models.SET_NULL, null=True, blank=True,
+                                          related_name='residents')
     issue_country = models.ForeignKey("listings.Country", on_delete=models.SET_NULL, null=True, blank=True)
     # New field for user location using LocationData
-    user_location = models.ForeignKey("listings.LocationData", on_delete=models.SET_NULL, null=True, blank=True, related_name='user_profiles')
+    user_location = models.ForeignKey("listings.LocationData", on_delete=models.SET_NULL, null=True, blank=True,
+                                      related_name='user_profiles')
     id_type = models.ForeignKey(IdType, on_delete=models.SET_NULL, null=True, blank=True)
-    
+
     profile_picture_url = models.CharField(max_length=255, blank=True, null=True)
     front_side_identity_card_url = models.CharField(max_length=255, blank=True, null=True)
     back_side_identity_card_url = models.CharField(max_length=255, blank=True, null=True)
@@ -120,7 +129,7 @@ class Profile(models.Model):
     device_os = models.CharField(max_length=255, blank=True)
     referral_code_used = models.CharField(max_length=255, blank=True)
     last_active = models.DateTimeField(null=True, blank=True)
-    
+
     total_trips_created = models.IntegerField(default=0)
     total_offer_sent = models.IntegerField(default=0)
     total_offer_received = models.IntegerField(default=0)
@@ -146,6 +155,7 @@ def save_user_profile(sender, instance, created, **kwargs):
         if hasattr(instance, 'profile'):
             instance.profile.save()
 
+
 class OTP(models.Model):
     user = models.ForeignKey(CustomUser, on_delete=models.CASCADE, related_name='otps')
     code = models.CharField(max_length=6)
@@ -163,7 +173,8 @@ class OTP(models.Model):
 
     class Meta:
         ordering = ['-created_at']
-        
+
+
 class DiditVerificationSession(models.Model):
     user = models.ForeignKey(CustomUser, on_delete=models.CASCADE, related_name='verification_sessions')
     session_id = models.CharField(max_length=100, unique=True)
@@ -177,9 +188,9 @@ class DiditVerificationSession(models.Model):
     verification_url = models.URLField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-    
+
     def __str__(self):
         return f"Verification session {self.session_id} for {self.user.email}"
-        
+
     class Meta:
         ordering = ['-created_at']
