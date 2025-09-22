@@ -1,8 +1,10 @@
-from django.shortcuts import render, get_object_or_404
+from django.shortcuts import get_object_or_404
+from django.db.models import Count
 from rest_framework import viewsets, status, permissions
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
+
 from .models import Conversation, Message, MessageAttachment, Notification
 from .serializers import (
     ConversationSerializer, ConversationCreateSerializer,
@@ -13,7 +15,6 @@ from config.views import StandardResponseViewSet
 from .permissions import IsMessageOwner
 from config.utils import standard_response
 
-# Create your views here.
 
 class ConversationViewSet(viewsets.ModelViewSet):
     serializer_class = ConversationSerializer
@@ -23,40 +24,60 @@ class ConversationViewSet(viewsets.ModelViewSet):
         user = self.request.user
         return Conversation.objects.filter(participants=user).distinct()
 
-
     def get_serializer_class(self):
         if self.action == 'create':
             return ConversationCreateSerializer
         return ConversationSerializer
 
     def perform_create(self, serializer):
+        # Save draft conversation
         conversation = serializer.save()
         user_ids = {self.request.user.id}
 
-        # Add travel_listing owner if exists
+        # Add related users
         if conversation.travel_listing and conversation.travel_listing.user:
             user_ids.add(conversation.travel_listing.user.id)
 
-        # Add package_request owner if exists
         if conversation.package_request and conversation.package_request.user:
             user_ids.add(conversation.package_request.user.id)
 
-        conversation.participants.add(*user_ids)
-
-        # Log message_click event if related to a trip
-        if conversation.travel_listing:
-            from reporting.models import EventLog
-            EventLog.objects.create(
-                event_type='message_click',
-                user=self.request.user,
-                trip=conversation.travel_listing
+        # Step 1: If listing or request is provided → check for duplicates
+        if conversation.travel_listing or conversation.package_request:
+            qs = Conversation.objects.filter(
+                travel_listing=conversation.travel_listing,
+                package_request=conversation.package_request
             )
+        else:
+            # Step 2: If no listing/request → check for duplicates just by participants
+            qs = Conversation.objects.filter(
+                travel_listing__isnull=True,
+                package_request__isnull=True,
+            )
+
+        # Step 3: Match exact participant count
+        qs = qs.annotate(num_participants=Count("participants", distinct=True)) \
+            .filter(num_participants=len(user_ids))
+
+        # Step 4: Ensure all participants are present
+        for uid in user_ids:
+            qs = qs.filter(participants__id=uid)
+
+        existing = qs.first()
+
+        if existing:
+            # Delete the newly created draft and return the existing conversation
+            conversation.delete()
+            return existing
+
+        # Step 5: Otherwise, finalize new conversation
+        conversation.participants.add(*user_ids)
+        return conversation
 
     @action(detail=True, methods=['get'])
     def messages(self, request, pk=None):
         conversation = self.get_object()
-        messages = conversation.messages.all()
-        
+        messages = conversation.messages.all().order_by('created_at')
+
         page = self.paginate_queryset(messages)
         if page is not None:
             serializer = MessageSerializer(page, many=True)
@@ -69,17 +90,14 @@ class ConversationViewSet(viewsets.ModelViewSet):
     def send_message(self, request, pk=None):
         conversation = self.get_object()
         serializer = MessageSerializer(data=request.data)
-        
+
         if serializer.is_valid():
             message = serializer.save(
                 conversation=conversation,
                 sender=request.user
             )
-            
-            # Send message through WebSocket
             message_data = MessageSerializer(message).data
             send_message_to_conversation(conversation.id, message_data)
-            
             return Response(message_data, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
@@ -87,31 +105,24 @@ class ConversationViewSet(viewsets.ModelViewSet):
     def typing(self, request, pk=None):
         conversation = self.get_object()
         is_typing = request.data.get('is_typing', False)
-        
-        # Send typing indicator through WebSocket
         send_typing_indicator(conversation.id, request.user.id, is_typing)
-        
         return Response({'status': 'success'})
 
     @action(detail=False, methods=['get'])
     def unread_count(self, request):
         user = request.user
         conversations = self.get_queryset()
-        
+
         unread_counts = {}
         for conversation in conversations:
             unread_counts[conversation.id] = conversation.messages.filter(
                 is_read=False
-            ).exclude(
-                sender=user
-            ).count()
-        
+            ).exclude(sender=user).count()
+
         return Response(unread_counts)
 
+
 class MessageViewSet(StandardResponseViewSet):
-    """
-    API endpoint for messages
-    """
     queryset = Message.objects.all()
     serializer_class = MessageSerializer
     permission_classes = [permissions.IsAuthenticated]
@@ -121,7 +132,11 @@ class MessageViewSet(StandardResponseViewSet):
 
     def get_queryset(self):
         user = self.request.user
-        return Message.objects.filter(conversation__participants=user).distinct().order_by('-created_at')
+        return (
+            Message.objects.filter(conversation__participants=user)
+            .distinct()
+            .order_by('-created_at')
+        )
 
     def get_permissions(self):
         if self.action in ['update', 'partial_update', 'destroy']:
@@ -133,20 +148,27 @@ class MessageViewSet(StandardResponseViewSet):
         message = self.get_object()
         message.is_read = True
         message.save()
-        return standard_response(data=self.get_serializer(message).data, status_code=status.HTTP_200_OK)
+        return standard_response(
+            data=self.get_serializer(message).data,
+            status_code=status.HTTP_200_OK,
+        )
 
     @action(detail=False, methods=['post'], url_path='mark_multiple_as_read')
     def mark_multiple_as_read(self, request):
         message_ids = request.data.get('message_ids', [])
         if not isinstance(message_ids, list) or not all(isinstance(mid, int) for mid in message_ids):
-            return standard_response(error=['message_ids must be a list of integers.'], status_code=status.HTTP_400_BAD_REQUEST)
+            return standard_response(
+                error=['message_ids must be a list of integers.'],
+                status_code=status.HTTP_400_BAD_REQUEST,
+            )
         user = request.user
-        # Only mark as read messages the user has access to
         messages = Message.objects.filter(id__in=message_ids, conversation__participants=user)
         updated_count = messages.update(is_read=True)
-        # Return the updated messages
         serializer = self.get_serializer(messages, many=True)
-        return standard_response(data={'updated_count': updated_count, 'messages': serializer.data}, status_code=status.HTTP_200_OK)
+        return standard_response(
+            data={'updated_count': updated_count, 'messages': serializer.data},
+            status_code=status.HTTP_200_OK,
+        )
 
 
 class MessageAttachmentViewSet(viewsets.ModelViewSet):
@@ -155,22 +177,23 @@ class MessageAttachmentViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
-        return MessageAttachment.objects.filter(message__conversation__participants=user).distinct()
+        return MessageAttachment.objects.filter(
+            message__conversation__participants=user
+        ).distinct()
 
     def perform_create(self, serializer):
         message_id = self.request.data.get('message')
         user = self.request.user
-        
-        # Check if user has access to the message
+
         message = get_object_or_404(
             Message.objects.filter(conversation__participants=user),
-            id=message_id
+            id=message_id,
         )
         attachment = serializer.save(message=message)
-        
-        # Send updated message through WebSocket
+
         message_data = MessageSerializer(message).data
         send_message_to_conversation(message.conversation.id, message_data)
+
 
 class NotificationViewSet(viewsets.ModelViewSet):
     serializer_class = NotificationSerializer
