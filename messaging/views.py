@@ -34,42 +34,30 @@ class ConversationViewSet(viewsets.ModelViewSet):
         conversation = serializer.save()
         user_ids = {self.request.user.id}
 
-        # Add related users
+        # Add the trip owner
         if conversation.travel_listing and conversation.travel_listing.user:
             user_ids.add(conversation.travel_listing.user.id)
 
-        if conversation.package_request and conversation.package_request.user:
-            user_ids.add(conversation.package_request.user.id)
+        # 🚨 Must always be tied to a trip — if not, just delete and return None
+        if not conversation.travel_listing:
+            conversation.delete()
+            return None
 
-        # Step 1: If listing or request is provided → check for duplicates
-        if conversation.travel_listing or conversation.package_request:
-            qs = Conversation.objects.filter(
-                travel_listing=conversation.travel_listing,
-                package_request=conversation.package_request
-            )
-        else:
-            # Step 2: If no listing/request → check for duplicates just by participants
-            qs = Conversation.objects.filter(
-                travel_listing__isnull=True,
-                package_request__isnull=True,
-            )
-
-        # Step 3: Match exact participant count
+        # Check if a conversation already exists for this trip with these participants
+        qs = Conversation.objects.filter(travel_listing=conversation.travel_listing)
         qs = qs.annotate(num_participants=Count("participants", distinct=True)) \
             .filter(num_participants=len(user_ids))
 
-        # Step 4: Ensure all participants are present
         for uid in user_ids:
             qs = qs.filter(participants__id=uid)
 
         existing = qs.first()
-
         if existing:
-            # Delete the newly created draft and return the existing conversation
+            # Delete the draft and return the existing one
             conversation.delete()
             return existing
 
-        # Step 5: Otherwise, finalize new conversation
+        # Otherwise finalize new conversation
         conversation.participants.add(*user_ids)
         return conversation
 
@@ -97,8 +85,21 @@ class ConversationViewSet(viewsets.ModelViewSet):
                 sender=request.user
             )
             message_data = MessageSerializer(message).data
+
+            # 🔔 Create a notification for every other participant in the conversation
+            for participant in conversation.participants.exclude(id=request.user.id):
+                Notification.objects.create(
+                    user=participant,
+                    travel_listing=conversation.travel_listing,
+                    message=message.content,
+                    is_read=False
+                )
+
+            # Broadcast via WebSocket / Signal
             send_message_to_conversation(conversation.id, message_data)
+
             return Response(message_data, status=status.HTTP_201_CREATED)
+
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
     @action(detail=True, methods=['post'])
