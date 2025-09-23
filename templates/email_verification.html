@@ -4,33 +4,47 @@
     <meta charset="utf-8">
     <style>
         body {
-            font-family: Arial, sans-serif;
-            line-height: 1.6;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f2f4f8;
+            margin: 0;
+            padding: 0;
             color: #333;
         }
         .container {
             max-width: 600px;
-            margin: 0 auto;
-            padding: 20px;
+            margin: 40px auto;
+            padding: 30px;
+            background-color: #ffffff;
+            border-radius: 8px;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.05);
         }
         .header {
             text-align: center;
-            padding: 20px 0;
-            background-color: #f8f9fa;
-            border-radius: 5px;
+            padding-bottom: 20px;
+            border-bottom: 1px solid #dee2e6;
+        }
+        .header h2 {
+            margin: 0;
+            color: #1a1a1a;
+        }
+        .message {
+            padding-top: 20px;
+            font-size: 16px;
         }
         .otp-code {
-            font-size: 24px;
+            font-size: 28px;
             font-weight: bold;
+            color: #0056b3;
             text-align: center;
+            background-color: #e9f2ff;
             padding: 20px;
-            background-color: #e9ecef;
-            border-radius: 5px;
-            margin: 20px 0;
+            margin: 30px 0;
+            border-radius: 6px;
+            letter-spacing: 4px;
         }
         .footer {
             text-align: center;
-            margin-top: 20px;
+            margin-top: 30px;
             font-size: 12px;
             color: #6c757d;
         }
@@ -39,22 +53,27 @@
 <body>
     <div class="container">
         <div class="header">
-            <h2>Email Verification</h2>
+            <h2>Velro Email Verification</h2>
         </div>
-        <p>Hello {{ user.first_name }},</p>
-        <p>Thank you for registering with P2P Kilosales. To verify your email address, please use the following OTP code:</p>
-        
+        <div class="message">
+            <p>Hi {{ user.first_name }},</p>
+            <p>Welcome to <strong>Velro</strong> — your trusted platform for safe and fast delivery through travelers.</p>
+            <p>To verify your email address, please use the OTP code below:</p>
+        </div>
+
         <div class="otp-code">
             {{ otp_code }}
         </div>
-        
-        <p>This OTP code will expire in 10 minutes.</p>
-        <p>If you didn't request this verification, please ignore this email.</p>
-        
+
+        <div class="message">
+            <p>This code is valid for <strong>10 minutes</strong>.</p>
+            <p>If you did not request this verification, you can safely ignore this email.</p>
+        </div>
+
         <div class="footer">
-            <p>This is an automated message, please do not reply to this email.</p>
-            <p>&copy; 2024 P2P Kilosales. All rights reserved.</p>
+            <p>This is an automated message from Velro. Please do not reply.</p>
+            <p>&copy; 2025 Velro. All rights reserved.</p>
         </div>
     </div>
 </body>
-</html> 
+</html>
