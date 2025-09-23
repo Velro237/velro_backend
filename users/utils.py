@@ -10,7 +10,7 @@ def send_verification_email(user, otp_code):
     """
     Send verification email with OTP code
     """
-    subject = 'Welcome to Velro – Confirm Your Email'
+    subject = 'Verify Your Email - Velro'
     
     try:
         # Debug prints
@@ -34,16 +34,16 @@ def send_verification_email(user, otp_code):
         print(f"\nAttempting to send verification email to {user.email}")
         print(f"Email content: {plain_message}")
         
-        # Send email
-      send_mail(
-    subject=subject,
-    message=plain_message,
-    from_email=f"Velro <{settings.EMAIL_HOST_USER}>",  # ✅ sets display name
-    recipient_list=[user.email],
-    html_message=html_message,
-    fail_silently=False,
-)
+        # Send email (original version)
+        send_mail(
+            subject=subject,
+            message=plain_message,
+            from_email=settings.EMAIL_HOST_USER,
+            recipient_list=[user.email],
+            html_message=html_message,
+            fail_silently=False,
+        )
         print(f"Verification email sent successfully to {user.email}")
     except Exception as e:
         print(f"Failed to send verification email to {user.email}: {str(e)}")
-        raise 
+        raise
