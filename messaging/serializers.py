@@ -3,13 +3,16 @@ from .models import Conversation, Message, MessageAttachment, Notification
 from users.serializers import UserProfileSerializer
 from listings.serializers import TravelListingSerializer, PackageRequestSerializer
 from config.utils import upload_image
+
+
 class MessageAttachmentSerializer(serializers.ModelSerializer):
     file = serializers.FileField(write_only=True, required=False)
+
     class Meta:
         model = MessageAttachment
         fields = ('id', 'file', 'file_name', 'file_url', 'file_type', 'created_at')
         read_only_fields = ('file_name', 'file_url', 'file_type', 'created_at')
-    
+
     def create(self, validated_data):
         file = validated_data.pop('file', None)
         # Set file_name and file_type automatically from the uploaded file
@@ -23,7 +26,7 @@ class MessageAttachmentSerializer(serializers.ModelSerializer):
             instance.file_url = file_url
             instance.save()
         return instance
-    
+
     def update(self, instance, validated_data):
         file = validated_data.pop('file', None)
         for attr, value in validated_data.items():
@@ -34,10 +37,11 @@ class MessageAttachmentSerializer(serializers.ModelSerializer):
             instance.file_type = getattr(file, 'content_type', '')
             file_url = upload_image(file, public_id=f'message_attachments/{instance.message.id}/{file.name}')
             instance.file_url = file_url
-        
+
         instance.save()
         return instance
-    
+
+
 class MessageSerializer(serializers.ModelSerializer):
     sender = UserProfileSerializer(read_only=True)
     attachments = MessageAttachmentSerializer(many=True, read_only=True)
@@ -50,13 +54,13 @@ class MessageSerializer(serializers.ModelSerializer):
     class Meta:
         model = Message
         fields = ('id', 'conversation', 'sender', 'content', 'is_read',
-                 'created_at', 'attachments', 'uploaded_files')
+                  'created_at', 'attachments', 'uploaded_files')
         read_only_fields = ('created_at', 'is_read')
 
     def create(self, validated_data):
         uploaded_files = validated_data.pop('uploaded_files', [])
         message = Message.objects.create(**validated_data)
-        
+
         # Handle file attachments
         for file in uploaded_files:
             file_url = upload_image(file, public_id=f'message_attachments/{message.id}/{file.name}')
@@ -67,9 +71,9 @@ class MessageSerializer(serializers.ModelSerializer):
                 file_name=file.name,
                 file_type=file.content_type
             )
-        
+
         return message
-    
+
     def update(self, instance, validated_data):
         uploaded_files = validated_data.pop('uploaded_files', [])
         for attr, value in validated_data.items():
@@ -86,9 +90,10 @@ class MessageSerializer(serializers.ModelSerializer):
                     file_name=file.name,
                     file_type=file.content_type
                 )
-        
+
         instance.save()
         return instance
+
 
 class ConversationSerializer(serializers.ModelSerializer):
     participants = UserProfileSerializer(many=True, read_only=True)
@@ -100,7 +105,7 @@ class ConversationSerializer(serializers.ModelSerializer):
     class Meta:
         model = Conversation
         fields = ('id', 'participants', 'travel_listing', 'package_request',
-                 'created_at', 'updated_at', 'last_message', 'unread_count')
+                  'created_at', 'updated_at', 'last_message', 'unread_count')
         read_only_fields = ('created_at', 'updated_at')
 
     def get_last_message(self, obj):
@@ -113,6 +118,7 @@ class ConversationSerializer(serializers.ModelSerializer):
         user = self.context['request'].user
         return obj.messages.filter(is_read=False).exclude(sender=user).count()
 
+
 class ConversationCreateSerializer(serializers.ModelSerializer):
     participant_ids = serializers.ListField(
         child=serializers.IntegerField(),
@@ -123,7 +129,8 @@ class ConversationCreateSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Conversation
-        fields = ('participant_ids', 'travel_listing_id', 'package_request_id')
+        fields = ('id', 'participant_ids', 'travel_listing_id', 'package_request_id')
+        read_only_fields = ('id',)
 
     def validate(self, data):
         if not data.get('travel_listing_id') and not data.get('package_request_id'):
@@ -147,8 +154,9 @@ class ConversationCreateSerializer(serializers.ModelSerializer):
 
         return conversation
 
+
 class NotificationSerializer(serializers.ModelSerializer):
     class Meta:
         model = Notification
         fields = ('id', 'user', 'travel_listing', 'message', 'is_read', 'created_at')
-        read_only_fields = ('created_at',) 
+        read_only_fields = ('created_at',)
