@@ -2,6 +2,7 @@ from django.shortcuts import get_object_or_404
 from django.db.models import Count
 from rest_framework import viewsets, status, permissions
 from rest_framework.decorators import action
+from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 
@@ -30,36 +31,44 @@ class ConversationViewSet(viewsets.ModelViewSet):
         return ConversationSerializer
 
     def perform_create(self, serializer):
-        # Save draft conversation
         conversation = serializer.save()
+
+        # Always include current user
         user_ids = {self.request.user.id}
 
-        # Add the trip owner
+        # Always include trip owner
         if conversation.travel_listing and conversation.travel_listing.user:
             user_ids.add(conversation.travel_listing.user.id)
 
-        # 🚨 Must always be tied to a trip — if not, just delete and return None
-        if not conversation.travel_listing:
-            conversation.delete()
-            return None
+        # Add any extra participants explicitly provided
+        extra_participants = self.request.data.get("participants", [])
+        if isinstance(extra_participants, list):
+            user_ids.update(extra_participants)
 
-        # Check if a conversation already exists for this trip with these participants
+        # Check for existing conversation with same participants & listing
         qs = Conversation.objects.filter(travel_listing=conversation.travel_listing)
         qs = qs.annotate(num_participants=Count("participants", distinct=True)) \
             .filter(num_participants=len(user_ids))
-
         for uid in user_ids:
             qs = qs.filter(participants__id=uid)
 
         existing = qs.first()
         if existing:
-            # Delete the draft and return the existing one
             conversation.delete()
             return existing
 
-        # Otherwise finalize new conversation
+        # Finalize new conversation
         conversation.participants.add(*user_ids)
         return conversation
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        conversation = self.perform_create(serializer)
+
+        # Re-serialize with the full serializer (includes id)
+        output_serializer = ConversationSerializer(conversation, context={'request': request})
+        return Response(output_serializer.data, status=status.HTTP_201_CREATED)
 
     @action(detail=True, methods=['get'])
     def messages(self, request, pk=None):
