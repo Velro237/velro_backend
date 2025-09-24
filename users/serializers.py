@@ -57,7 +57,7 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = User
-        fields = ('email', 'username', 'first_name', 'last_name', 'phone_number', 'user_location')
+        fields = ('email', 'username', 'password', 'first_name', 'last_name', 'phone_number', 'user_location')
 
     def validate_email(self, value):
         if User.objects.filter(email=value).exists():
@@ -81,8 +81,12 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
         # Extract location data
         user_location = validated_data.pop('user_location', None)
 
+        # Extract password (if provided) or mark as unusable
+        password = validated_data.pop('password', None)
+
         # Ensure phone number is normalized before saving
         validated_data['phone_number'] = ''.join(filter(str.isdigit, validated_data['phone_number']))
+
         user = User.objects.create(
             email=validated_data['email'],
             username=validated_data['username'],
@@ -90,7 +94,14 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
             last_name=validated_data['last_name'],
             phone_number=validated_data['phone_number']
         )
-        user.set_unusable_password()
+
+        if password:
+            user.set_password(password)  # hash password
+        else:
+            user.set_unusable_password()
+
+        # Make user inactive until OTP verification
+        user.is_active = False
         user.save()
 
         # Update profile with location data
@@ -116,14 +127,11 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
                 try:
                     location, created = LocationData.objects.get_or_create(**location_data)
                 except IntegrityError:
-                    # Handle race condition where another user created the same location
                     try:
                         location = LocationData.objects.get(**location_data)
                     except LocationData.DoesNotExist:
-                        # If still not found, raise the original error
                         raise
 
-                # Store location reference in profile preferences
                 preferences = profile.preferences or {}
                 if isinstance(preferences, str) and preferences.strip():
                     import json
