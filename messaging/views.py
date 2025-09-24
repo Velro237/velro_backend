@@ -32,21 +32,25 @@ class ConversationViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         conversation = serializer.save()
-
-        # Always include current user
         user_ids = {self.request.user.id}
 
-        # Always include trip owner
+        # Always include trip owner if travel_listing is set
         if conversation.travel_listing and conversation.travel_listing.user:
             user_ids.add(conversation.travel_listing.user.id)
 
-        # Add any extra participants explicitly provided
-        extra_participants = self.request.data.get("participants", [])
+        # Extra participants
+        extra_participants = self.request.data.get("participant_ids", [])
         if isinstance(extra_participants, list):
             user_ids.update(extra_participants)
 
-        # Check for existing conversation with same participants & listing
-        qs = Conversation.objects.filter(travel_listing=conversation.travel_listing)
+        # Scope: package_request OR travel_listing (serializer already validates one is present)
+        qs = Conversation.objects.all()
+        if conversation.package_request:
+            qs = qs.filter(package_request=conversation.package_request)
+        if conversation.travel_listing:
+            qs = qs.filter(travel_listing=conversation.travel_listing)
+
+        # Match participants
         qs = qs.annotate(num_participants=Count("participants", distinct=True)) \
             .filter(num_participants=len(user_ids))
         for uid in user_ids:
