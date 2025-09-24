@@ -2,7 +2,6 @@ from django.shortcuts import get_object_or_404
 from django.db.models import Count
 from rest_framework import viewsets, status, permissions
 from rest_framework.decorators import action
-from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 
@@ -37,11 +36,6 @@ class ConversationViewSet(viewsets.ModelViewSet):
         # Always include trip owner if travel_listing is set
         if conversation.travel_listing and conversation.travel_listing.user:
             user_ids.add(conversation.travel_listing.user.id)
-
-        # Extra participants
-        extra_participants = self.request.data.get("participant_ids", [])
-        if isinstance(extra_participants, list):
-            user_ids.update(extra_participants)
 
         # Scope: package_request OR travel_listing (serializer already validates one is present)
         qs = Conversation.objects.all()
