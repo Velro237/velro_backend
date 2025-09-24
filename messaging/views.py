@@ -52,7 +52,7 @@ class ConversationViewSet(viewsets.ModelViewSet):
 
         existing = qs.first()
         if existing:
-            conversation.delete()
+            # conversation.delete()
             return existing
 
         # Finalize new conversation
