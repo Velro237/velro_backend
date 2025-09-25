@@ -4,8 +4,10 @@ from django.utils.translation import gettext_lazy as _
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 from django.conf import settings
+from django.core.exceptions import ValidationError
 
 from config.utils import upload_image, delete_image, optimized_image_url, auto_crop_url
+from messaging.models import Conversation  # Adjust 'messaging' to your actual app name if different
 
 
 class BaseUser(AbstractUser):
@@ -194,3 +196,42 @@ class DiditVerificationSession(models.Model):
 
     class Meta:
         ordering = ['-created_at']
+
+
+class ReportUser(models.Model):
+    REPORT_REASON_CHOICES = (
+        ("no_delivery", "Didn't deliver item"),
+        ("fraud_attempt", "Fraud attempt"),
+        ("rude", "Rude and disrespectful"),
+        ("fake_offer", "Fake or misleading offer"),
+        ("other", "Other"),
+    )
+
+    reporter = models.ForeignKey(
+        CustomUser, on_delete=models.CASCADE, related_name="reports_made"
+    )
+    reported_user = models.ForeignKey(
+        CustomUser, on_delete=models.CASCADE, related_name="reports_received"
+    )
+    reasons = models.JSONField(default=list)
+    notes = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"Report by {self.reporter.email} against {self.reported_user.email}"
+
+    class Meta:
+        ordering = ["-created_at"]
+        unique_together = ("reporter", "reported_user")  # Prevent duplicate reports 
+
+    def clean(self):
+        reasons = self.reasons
+        if not all(reason in self.REPORT_REASON_CHOICES for reason in reasons):
+            raise ValidationError("All reasons must be one of the following: " + ", ".join(self.REPORT_REASON_CHOICES))
+        return super().clean()
+
+    def save(self, *args, **kwargs):
+        # Check if a conversation exists between the reporter and reported_user
+        if not Conversation.objects.filter(participants__in=[self.reporter, self.reported_user]).exists():
+            raise ValidationError("Reporter and reported_user must have a conversation before creating a report.")
+        super().save(*args, **kwargs)
