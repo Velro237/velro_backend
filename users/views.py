@@ -229,41 +229,89 @@ class UserViewSet(StandardResponseViewSet):
 
     @action(detail=False, methods=['post'])
     def register(self, request):
-        # Process location data from request
+        # Make a copy of request data
         data = request.data.copy()
 
-        # Handle location data in different formats
-        if 'pickup_location' in data and isinstance(data['pickup_location'], dict):
-            data['user_location'] = data.pop('pickup_location')
+        # Map location fields to `user_location` for serializer
+        if 'user_location' in data and isinstance(data['user_location'], dict):
+            data['user_location'] = data.pop('user_location')
         elif 'city_of_residence' in data and isinstance(data['city_of_residence'], dict):
             data['user_location'] = data.pop('city_of_residence')
         elif 'location' in data and isinstance(data['location'], dict):
             data['user_location'] = data.pop('location')
 
-        # Create the user with location data
+        # Create user using serializer
         serializer = UserRegistrationSerializer(data=data)
         if serializer.is_valid():
             user = serializer.save()
+
+            # Generate OTP for email verification
             otp = ''.join(random.choices(string.digits, k=6))
             OTP.objects.create(user=user, code=otp, purpose='email_verification')
+
             try:
                 send_verification_email(user, otp)
-                return standard_response(
-                    data={
-                        'message': 'Registration successful. Please check your email for verification code.',
-                        'user_id': user.id
-                    },
-                    status_code=status.HTTP_201_CREATED
-                )
             except Exception as e:
-                return standard_response(
-                    data={
-                        'message': 'Registration successful but email verification failed. Please try resending OTP.',
-                        'user_id': user.id,
-                        'warning': str(e)
-                    },
-                    status_code=status.HTTP_201_CREATED
-                )
+                warning = str(e)
+            else:
+                warning = None
+
+            # Save user_location properly as LocationData object
+            user_location = serializer.validated_data.get('user_location', None)
+            if user_location and hasattr(user, 'profile'):
+                profile = user.profile
+                from listings.models import LocationData
+                from django.db import IntegrityError
+
+                location_data = {
+                    'name': user_location['name'],
+                    'country': user_location['country'],
+                    'country_code': user_location.get('country_code') or user_location.get('countryCode')
+                }
+
+                try:
+                    location, created = LocationData.objects.get_or_create(**location_data)
+                except IntegrityError:
+                    location = LocationData.objects.get(**location_data)
+
+                # Assign the LocationData object to profile.user_location
+                profile.user_location = location
+
+                # Also update preferences
+                preferences = profile.preferences or {}
+                if isinstance(preferences, str) and preferences.strip():
+                    import json
+                    try:
+                        preferences = json.loads(preferences.replace("'", '"'))
+                    except:
+                        preferences = {}
+                elif not isinstance(preferences, dict):
+                    preferences = {}
+
+                preferences['location'] = {
+                    'id': location.id,
+                    'name': location.name,
+                    'country': location.country,
+                    'countryCode': location.country_code
+                }
+
+                profile.preferences = preferences
+                profile.save()
+
+            # Serialize profile to return in response
+            profile_serializer = ProfileSerializer(user.profile)
+
+            return standard_response(
+                data={
+                    'message': 'Registration successful. Please check your email for verification code.',
+                    'user_id': user.id,
+                    'profile': profile_serializer.data,
+                    'warning': warning
+                },
+                status_code=status.HTTP_201_CREATED
+            )
+
+        # If serializer invalid
         return standard_response(
             status_code=status.HTTP_400_BAD_REQUEST,
             error=[f"{field}: {error[0]}" for field, error in serializer.errors.items()]
