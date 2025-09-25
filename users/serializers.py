@@ -57,7 +57,7 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = User
-        fields = ('email', 'username', 'password', 'first_name', 'last_name', 'phone_number', 'user_location')
+        fields = ('email', 'username', 'first_name', 'last_name', 'phone_number', 'user_location')
 
     def validate_email(self, value):
         if User.objects.filter(email=value).exists():
