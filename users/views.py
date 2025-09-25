@@ -929,11 +929,26 @@ class UserViewSet(StandardResponseViewSet):
             )
 
         user.set_password(password)
+        user.is_active = True
         user.save()
+
+        # auth token
+        refresh = RefreshToken.for_user(user)
+        access_token = str(refresh.access_token)
+        refresh_token = str(refresh)
+
         return standard_response(
-            data={'message': 'Password set successfully. You can now log in.'},
+            data={'message': 'Password set successfully. You can now log in.',
+                  'user': UserSerializer(user).data,
+                  'tokens': {
+                      'access': access_token,
+                      'refresh': refresh_token
+                  }
+                  },
             status_code=status.HTTP_200_OK
         )
+
+    from rest_framework_simplejwt.tokens import RefreshToken
 
     @action(detail=False, methods=['post'], permission_classes=[AllowAny])
     def register_google(self, request):
@@ -989,10 +1004,19 @@ class UserViewSet(StandardResponseViewSet):
         )
         # Do NOT set password here. User will set password later using set_password endpoint.
 
+        #  Generate JWT tokens
+        refresh = RefreshToken.for_user(user)
+        access_token = str(refresh.access_token)
+        refresh_token = str(refresh)
+
         return standard_response(
             data={
                 'message': 'Registration successful. Please set your password using the set_password endpoint.',
-                'user': UserSerializer(user).data
+                'user': UserSerializer(user).data,
+                'tokens': {
+                    'access': access_token,
+                    'refresh': refresh_token
+                }
             },
             status_code=status.HTTP_201_CREATED
         )
