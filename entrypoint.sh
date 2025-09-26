@@ -1,11 +1,11 @@
 #!/bin/sh
 
-# Wait for Postgres to be ready
-echo "Waiting for db to be ready..."
-until nc -z db 5432; do
-  sleep 1
-done
-echo "Database is ready!"
+# # Wait for Postgres to be ready
+# echo "Waiting for db to be ready..."
+# until nc -z db 5432; do
+#   sleep 1
+# done
+# echo "Database is ready!"
 
 # Run migrations
 echo "Running migrations..."
