@@ -7,7 +7,6 @@ from django.conf import settings
 from django.core.exceptions import ValidationError
 
 from config.utils import upload_image, delete_image, optimized_image_url, auto_crop_url
-from messaging.models import Conversation  # Adjust 'messaging' to your actual app name if different
 
 
 class BaseUser(AbstractUser):
@@ -231,7 +230,8 @@ class ReportUser(models.Model):
         return super().clean()
 
     def save(self, *args, **kwargs):
-        # Check if a conversation exists between the reporter and reported_user
+        from messaging.models import Conversation 
+
         if not Conversation.objects.filter(participants__in=[self.reporter, self.reported_user]).exists():
             raise ValidationError("Reporter and reported_user must have a conversation before creating a report.")
         super().save(*args, **kwargs)
