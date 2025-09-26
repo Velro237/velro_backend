@@ -235,3 +235,10 @@ class ReportUser(models.Model):
         if not Conversation.objects.filter(participants__in=[self.reporter, self.reported_user]).exists():
             raise ValidationError("Reporter and reported_user must have a conversation before creating a report.")
         super().save(*args, **kwargs)
+
+
+
+
+
+
+
