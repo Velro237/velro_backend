@@ -8,14 +8,14 @@ from rest_framework.exceptions import PermissionDenied
 from django.contrib.auth import get_user_model, authenticate
 from django.utils import timezone
 from rest_framework_simplejwt.tokens import RefreshToken
-from .models import Profile, OTP, CustomUser, IdType, DiditVerificationSession
+from .models import Profile, OTP, CustomUser, IdType, DiditVerificationSession, ReportUser
 from .serializers import (
     UserRegistrationSerializer, UserProfileSerializer, ProfileSerializer,
     OTPSerializer, PasswordChangeSerializer, PrivacyPolicyAcceptanceSerializer,
     UserSerializer, OTPVerificationSerializer, ResendOTPSerializer, ForgotPasswordSerializer,
     ResetPasswordSerializer, SetPasswordSerializer, TelegramUserRegistrationSerializer, IdTypeSerializer,
     DiditIdVerificationSerializer, DiditPhoneSendSerializer, DiditPhoneCheckSerializer,
-    DiditVerificationSessionSerializer
+    DiditVerificationSessionSerializer, ReportUserSerializer
 )
 from .utils import send_verification_email
 import random
@@ -1915,3 +1915,26 @@ class IdTypeViewSet(StandardResponseViewSet):
 
     def perform_create(self, serializer):
         serializer.save()
+
+
+
+class ReportUserViewSet(StandardResponseViewSet):
+    """
+    API endpoint for reporting users
+    """
+    queryset = ReportUser.objects.all()
+    serializer_class = ReportUserSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_permissions(self):
+        if self.action in ['list', 'retrieve']:
+            return [permissions.IsAdminUser()]
+        return [permissions.IsAuthenticated()]
+
+    def get_queryset(self):
+        if self.request.user.is_staff:
+            return ReportUser.objects.all()
+        return ReportUser.objects.filter(reporter=self.request.user)
+
+    def perform_create(self, serializer):
+        serializer.save(reporter=self.request.user)

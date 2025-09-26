@@ -4,7 +4,7 @@ from .models import Profile, OTP, DiditVerificationSession
 from django.utils import timezone
 from listings.models import Region, Country
 from listings.serializers import RegionSerializer, CountrySerializer
-from .models import IdType
+from .models import IdType, ReportUser
 from django.conf import settings
 from config.utils import upload_image, delete_image, optimized_image_url, auto_crop_url
 import json
@@ -711,3 +711,26 @@ class DiditPhoneCheckSerializer(serializers.Serializer):
         if not value.startswith('+') or not value[1:].isdigit():
             raise serializers.ValidationError("Phone number must be in E.164 format (e.g. +14155552671)")
         return value
+
+
+class ReportUserSerializer(serializers.ModelSerializer):
+    reported_user = serializers.PrimaryKeyRelatedField(queryset=User.objects.all())
+    reporter = serializers.ReadOnlyField(source='reporter.id')
+
+    def validate(self, attrs):
+        request = self.context.get('request')
+        reporter = request.user if request and hasattr(request, 'user') else attrs.get('reporter', None)
+        if attrs['reported_user'] == reporter:
+            raise serializers.ValidationError("Reported user and reporter cannot be the same.")
+        return attrs
+
+    class Meta:
+        model = ReportUser
+        fields = ('id', 'reported_user', 'reporter', 'reasons', 'notes', 'created_at')
+        read_only_fields = ('id', 'created_at', 'reporter')
+
+    def create(self, validated_data):
+        request = self.context.get('request')
+        if request and hasattr(request, 'user'):
+            validated_data['reporter'] = request.user
+        return super().create(validated_data)
