@@ -696,19 +696,20 @@ class DiditPhoneCheckSerializer(serializers.Serializer):
         return value
 
 
-
 class ReportUserSerializer(serializers.ModelSerializer):
     reported_user = serializers.PrimaryKeyRelatedField(queryset=User.objects.all())
-    reporter = serializers.PrimaryKeyRelatedField(queryset=User.objects.all(), required=False)
+    reporter = serializers.ReadOnlyField(source='reporter.id')
 
     def validate(self, attrs):
-        if attrs['reported_user'] == attrs.get('reporter', None):
+        request = self.context.get('request')
+        reporter = request.user if request and hasattr(request, 'user') else attrs.get('reporter', None)
+        if attrs['reported_user'] == reporter:
             raise serializers.ValidationError("Reported user and reporter cannot be the same.")
         return attrs
 
     class Meta:
         model = ReportUser
-        fields = ('id', 'reported_user', 'reporter', 'reason', 'description', 'created_at')
+        fields = ('id', 'reported_user', 'reporter', 'reasons', 'notes', 'created_at')
         read_only_fields = ('id', 'created_at', 'reporter')
 
     def create(self, validated_data):

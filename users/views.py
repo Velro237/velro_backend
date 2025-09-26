@@ -1886,7 +1886,7 @@ class ReportUserViewSet(StandardResponseViewSet):
     def get_queryset(self):
         if self.request.user.is_staff:
             return ReportUser.objects.all()
-        return ReportUser.objects.filter(reported_by=self.request.user)
+        return ReportUser.objects.filter(reporter=self.request.user)
 
     def perform_create(self, serializer):
-        serializer.save(reported_by=self.request.user)
+        serializer.save(reporter=self.request.user)
