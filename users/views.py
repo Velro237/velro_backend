@@ -1846,10 +1846,34 @@ class AppleSignInView(APIView):
             )
 
         try:
+            # Step 1: Get token header
             unverified_header = jwt.get_unverified_header(token)
-            apple_keys = requests.get(settings.APPLE_PUBLIC_KEY_URL).json()['keys']
-            key = next(k for k in apple_keys if k['kid'] == unverified_header['kid'])
+
+            # Step 2: Fetch Apple public keys
+            response = requests.get(settings.APPLE_PUBLIC_KEY_URL, timeout=5)
+            if response.status_code != 200:
+                return standard_response(
+                    status_code=status.HTTP_502_BAD_GATEWAY,
+                    error=['Failed to fetch Apple public keys']
+                )
+            apple_keys = response.json().get('keys', [])
+            if not apple_keys:
+                return standard_response(
+                    status_code=status.HTTP_502_BAD_GATEWAY,
+                    error=['No Apple public keys found']
+                )
+
+            # Step 3: Find matching key by 'kid'
+            key = next((k for k in apple_keys if k['kid'] == unverified_header['kid']), None)
+            if not key:
+                return standard_response(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    error=['No matching Apple key found for token']
+                )
+
             public_key = RSAAlgorithm.from_jwk(key)
+
+            # Step 4: Decode the token
             decoded = jwt.decode(
                 token,
                 public_key,
@@ -1858,25 +1882,29 @@ class AppleSignInView(APIView):
                 issuer='https://appleid.apple.com'
             )
 
-            # Get user info from the token
             email = decoded.get('email') or request.data.get('email')
             apple_id = decoded['sub']
-            full_name = request.data.get('fullName')
+            full_name = request.data.get('fullName') or ""
 
-            try:
-                user = CustomUser.objects.get(email=email)
-                if not user.apple_id:
-                    user.apple_id = apple_id
-                    user.save()
-                if full_name:
-                    user.profile.full_name = full_name
-                    user.profile.save()
-            except CustomUser.DoesNotExist:
-                return standard_response(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    error=['Please sign up first']
-                )
-            # Generate tokens
+            # Step 5: Lookup or create user
+            user, created_user = CustomUser.objects.get_or_create(
+                email=email,
+                defaults={'apple_id': apple_id, 'username': email.split("@")[0]}
+            )
+            if not created_user and not user.apple_id:
+                user.apple_id = apple_id
+                user.save()
+
+            # Step 6: Get or create profile safely
+            profile, created_profile = Profile.objects.get_or_create(
+                user=user,
+                defaults={'full_name': full_name}
+            )
+            if full_name and not created_profile:
+                profile.full_name = full_name
+                profile.save()
+
+            # Step 7: Generate tokens
             refresh = RefreshToken.for_user(user)
 
             return standard_response(
@@ -1888,17 +1916,28 @@ class AppleSignInView(APIView):
                 status_code=status.HTTP_200_OK
             )
 
+        except jwt.ExpiredSignatureError:
+            return standard_response(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                error=['Apple token has expired']
+            )
         except jwt.InvalidTokenError as e:
             return standard_response(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                error=[f'Invalid token: {str(e)}']
+                error=[f'Invalid Apple token: {str(e)}']
+            )
+        except requests.RequestException as e:
+            return standard_response(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                error=[f'Failed to fetch Apple keys: {str(e)}']
             )
         except Exception as e:
+            import traceback
+            print(traceback.format_exc())
             return standard_response(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                error=[f'An error occurred: {str(e)}']
+                error=[f'An unexpected error occurred: {str(e)}']
             )
-
 
 class IdTypeViewSet(StandardResponseViewSet):
     """
