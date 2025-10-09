@@ -21,5 +21,7 @@ echo "Collecting static files..."
 python manage.py collectstatic --noinput --clear
 
 # Start Uvicorn
-echo "Starting Uvicorn ..."
-exec uvicorn config.asgi:application --host 0.0.0.0 --port 8000 --ws-max-size 2097152 
+# echo "Starting Uvicorn ..."
+# exec uvicorn config.asgi:application --host 0.0.0.0 --port 8000 --ws-max-size 2097152 
+echo "Starting Daphne ..."
+exec daphne -b 0.0.0.0 -p 8000 config.asgi:application
