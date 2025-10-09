@@ -6,7 +6,7 @@ services:
       POSTGRES_USER: velro_db_user
       POSTGRES_PASSWORD: BNS2rE5kaRnSoVKeS4MskdsYCg9Bs9T2
     ports:
-      - "5432:5432"
+      - "5439:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
 

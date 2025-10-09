@@ -115,7 +115,8 @@ class TravelListingViewSet(StandardResponseViewSet):
         - status: filter by status
         """
         queryset = TravelListing.objects.all().order_by('-created_at')
-        
+        # only return a a Travellisting if the travel_date is not passeded
+        queryset = queryset.filter(travel_date__gte=datetime.now().date())
         # For delete operations, allow authenticated users to access their own listings regardless of status
         if self.action == 'destroy' and self.request.user.is_authenticated:
             return TravelListing.objects.filter(user=self.request.user)
