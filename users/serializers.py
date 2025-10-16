@@ -161,36 +161,13 @@ class IdTypeSerializer(serializers.ModelSerializer):
 
 
 class ProfileSerializer(serializers.ModelSerializer):
-    # Legacy fields - will be deprecated
     city_of_residence = RegionSerializer(read_only=True)
-    city_of_residence_id = serializers.PrimaryKeyRelatedField(queryset=Region.objects.all(), source='city_of_residence',
-                                                              write_only=True, required=False)
-    issue_country = CountrySerializer(read_only=True)
-    issue_country_id = serializers.PrimaryKeyRelatedField(queryset=Country.objects.all(), source='issue_country',
-                                                          write_only=True, required=False)
-
-    # New field for direct location data
-    user_location_data = serializers.SerializerMethodField(read_only=True)
-    user_location_input = serializers.DictField(write_only=True, required=False)
-
+    city_of_residence_id = serializers.PrimaryKeyRelatedField(queryset=Region.objects.all(), source='city_of_residence', write_only=True, required=False)
     id_type = IdTypeSerializer(read_only=True)
-    id_type_id = serializers.PrimaryKeyRelatedField(queryset=IdType.objects.all(), source='id_type', write_only=True,
-                                                    required=False)
-
-    def get_user_location_data(self, obj):
-        print(f"DEBUG: get_user_location_data called for profile {obj.id}, user_location: {obj.user_location}")
-        if obj.user_location:
-            location_data = {
-                'id': obj.user_location.id,
-                'name': obj.user_location.name,
-                'country': obj.user_location.country,
-                'countryCode': obj.user_location.country_code
-            }
-            print(f"DEBUG: Returning location data: {location_data}")
-            return location_data
-        print("DEBUG: No user_location found, returning None")
-        return None
-
+    id_type_id = serializers.PrimaryKeyRelatedField(queryset=IdType.objects.all(), source='id_type', write_only=True, required=False)
+    issue_country = CountrySerializer(read_only=True)
+    issue_country_id = serializers.PrimaryKeyRelatedField(queryset=Country.objects.all(), source='issue_country', write_only=True, required=False)
+   
     profile_picture = serializers.ImageField(write_only=True, required=False)
     front_side_identity_card = serializers.ImageField(write_only=True, required=False)
     back_side_identity_card = serializers.ImageField(write_only=True, required=False)
@@ -248,7 +225,32 @@ class ProfileSerializer(serializers.ModelSerializer):
             'updated_at'
         )
         read_only_fields = (
-        'created_at', 'updated_at', 'city_of_residence', 'id_type', 'issue_country', 'user_location_data')
+            'created_at', 'updated_at', 'city_of_residence', 'id_type',
+            'issue_country', 'user_location_data'
+        )
+
+    def get_city_of_residence(self, obj):
+        # Map user_location to legacy city_of_residence
+        if obj.user_location:
+            return {
+                'id': obj.user_location.id,
+                'name': obj.user_location.name,
+                'country': obj.user_location.country,
+                'countryCode': obj.user_location.country_code
+            }
+        return None
+
+    def get_user_location_data(self, obj):
+        # Return new user_location_data
+        if obj.user_location:
+            return {
+                'id': obj.user_location.id,
+                'name': obj.user_location.name,
+                'country': obj.user_location.country,
+                'countryCode': obj.user_location.country_code
+            }
+        return None
+
 
     def create(self, validated_data):
         profile_picture = validated_data.pop('profile_picture', None)
