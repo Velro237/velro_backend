@@ -1,5 +1,6 @@
 from django.shortcuts import render
 from rest_framework import viewsets, status, generics, permissions, serializers
+from rest_framework import viewsets, status, generics, permissions, serializers
 from rest_framework.views import APIView
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -1938,6 +1939,7 @@ class AppleSignInView(APIView):
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 error=[f'An unexpected error occurred: {str(e)}']
             )
+
 
 class IdTypeViewSet(StandardResponseViewSet):
     """

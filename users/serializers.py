@@ -161,28 +161,13 @@ class IdTypeSerializer(serializers.ModelSerializer):
 
 
 class ProfileSerializer(serializers.ModelSerializer):
-    # Legacy fields - will be deprecated
-    city_of_residence = serializers.SerializerMethodField()  # mapped from user_location
-    city_of_residence_id = serializers.PrimaryKeyRelatedField(
-        queryset=Region.objects.all(), source='city_of_residence',
-        write_only=True, required=False
-    )
-    issue_country = CountrySerializer(read_only=True)
-    issue_country_id = serializers.PrimaryKeyRelatedField(
-        queryset=Country.objects.all(), source='issue_country',
-        write_only=True, required=False
-    )
-
-    # New field for direct location data
-    user_location_data = serializers.SerializerMethodField(read_only=True)
-    user_location_input = serializers.DictField(write_only=True, required=False)
-
+    city_of_residence = RegionSerializer(read_only=True)
+    city_of_residence_id = serializers.PrimaryKeyRelatedField(queryset=Region.objects.all(), source='city_of_residence', write_only=True, required=False)
     id_type = IdTypeSerializer(read_only=True)
-    id_type_id = serializers.PrimaryKeyRelatedField(
-        queryset=IdType.objects.all(), source='id_type', write_only=True,
-        required=False
-    )
-
+    id_type_id = serializers.PrimaryKeyRelatedField(queryset=IdType.objects.all(), source='id_type', write_only=True, required=False)
+    issue_country = CountrySerializer(read_only=True)
+    issue_country_id = serializers.PrimaryKeyRelatedField(queryset=Country.objects.all(), source='issue_country', write_only=True, required=False)
+   
     profile_picture = serializers.ImageField(write_only=True, required=False)
     front_side_identity_card = serializers.ImageField(write_only=True, required=False)
     back_side_identity_card = serializers.ImageField(write_only=True, required=False)
