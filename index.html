@@ -160,8 +160,8 @@
     let isSending = false;
     let attachmentsToSend = [];
 
-    const BASE_API_URL = "http://localhost:8000";
-    // const BASE_API_URL = "https://velro-backend.onrender.com";
+    // const BASE_API_URL = "http://localhost:8000";
+    const BASE_API_URL = "https://velro-backend.onrender.com";
 
     // DOM elements
     const chatContainer = document.getElementById("chatContainer");
@@ -349,8 +349,8 @@
 
       if (socket) socket.close();
 
-      const wsUrl = `ws://localhost:8000/ws/chat/${conversationId}/?token=${token}`;
-    //   const wsUrl = `wss://velro-backend.onrender.com/ws/chat/${conversationId}/?token=${token}`;
+      // const wsUrl = `ws://localhost:8000/ws/chat/${conversationId}/?token=${token}`;
+      const wsUrl = `wss://velro-backend.onrender.com/ws/chat/${conversationId}/?token=${token}`;
 
       showStatus("Connecting to chat...", false);
       socket = new WebSocket(wsUrl);

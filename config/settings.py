@@ -20,6 +20,8 @@ import firebase_admin
 from firebase_admin import credentials
 from rest_framework.permissions import AllowAny
 
+import firebase_admin
+from firebase_admin import credentials
 
 
 
@@ -63,7 +65,8 @@ INSTALLED_APPS = [
     'messaging',
     'reporting',
     'rest_framework_simplejwt.token_blacklist',
-    'channels'
+    'channels',
+    'fcmpush'
 ]
 SITE_ID = 1
 
@@ -320,4 +323,14 @@ DIDIT_PHONE_CHECK_URL = 'https://verification.didit.me/v2/phone/check/'
 # Configure WhiteNoise
 STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 
-# FIREBASE_CREDENTIAL = credentials.Certificate(os.path.join(BASE_DIR, 'adrash-firebase.json'))
+# Read the path from your .env
+FIREBASE_CREDENTIALS_PATH = os.getenv("FIREBASE_CREDENTIALS_PATH")
+
+if FIREBASE_CREDENTIALS_PATH:
+    cred_path = os.path.join(BASE_DIR, FIREBASE_CREDENTIALS_PATH)
+    if not firebase_admin._apps:  # prevent re-initialization
+        cred = credentials.Certificate(cred_path)
+        firebase_admin.initialize_app(cred)
+        print("🔥 Firebase initialized successfully!")
+else:
+    print("⚠️ FIREBASE_CREDENTIALS_PATH not set in .env")
