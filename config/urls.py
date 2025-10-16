@@ -26,5 +26,6 @@ urlpatterns = [
     path('api/listings/', include('listings.urls')),
     path('api/messaging/', include('messaging.urls')),
     path('api/admin/', include('reporting.urls')),
+    path('api/notification/', include('fcmpush.urls'))
 
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
