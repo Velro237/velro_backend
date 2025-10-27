@@ -1,6 +1,6 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
-from .models import CustomUser, Profile, OTP, IdType
+from .models import CustomUser, Profile, OTP, IdType, ReportUser
 from messaging.utils import send_notification_to_user
 
 
@@ -124,3 +124,13 @@ class IdTypeAdmin(admin.ModelAdmin):
 
 
 admin.site.register(CustomUser, CustomUserAdmin)
+
+
+@admin.register(ReportUser)
+class ReportUserAdmin(admin.ModelAdmin):
+    list_display = ('id', 'reported_user', 'reporter', 'reasons', 'notes', 'created_at')
+    list_filter = ('reasons', 'created_at')
+    search_fields = ('reported_user__email', 'reported_user__username',
+                     'reporter__email', 'reporter__username', 'reasons', 'notes')
+    readonly_fields = ('created_at',)
+    

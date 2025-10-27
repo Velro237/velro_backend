@@ -8,14 +8,14 @@ from rest_framework.exceptions import PermissionDenied
 from django.contrib.auth import get_user_model, authenticate
 from django.utils import timezone
 from rest_framework_simplejwt.tokens import RefreshToken
-from .models import Profile, OTP, CustomUser, IdType, DiditVerificationSession
+from .models import Profile, OTP, CustomUser, IdType, DiditVerificationSession, ReportUser
 from .serializers import (
     UserRegistrationSerializer, UserProfileSerializer, ProfileSerializer,
     OTPSerializer, PasswordChangeSerializer, PrivacyPolicyAcceptanceSerializer,
     UserSerializer, OTPVerificationSerializer, ResendOTPSerializer, ForgotPasswordSerializer,
     ResetPasswordSerializer, SetPasswordSerializer, TelegramUserRegistrationSerializer, IdTypeSerializer,
     DiditIdVerificationSerializer, DiditPhoneSendSerializer, DiditPhoneCheckSerializer,
-    DiditVerificationSessionSerializer
+    DiditVerificationSessionSerializer, ReportUserSerializer
 )
 from .utils import send_verification_email
 import random
@@ -229,41 +229,89 @@ class UserViewSet(StandardResponseViewSet):
 
     @action(detail=False, methods=['post'])
     def register(self, request):
-        # Process location data from request
+        # Make a copy of request data
         data = request.data.copy()
 
-        # Handle location data in different formats
-        if 'pickup_location' in data and isinstance(data['pickup_location'], dict):
-            data['user_location'] = data.pop('pickup_location')
+        # Map location fields to `user_location` for serializer
+        if 'user_location' in data and isinstance(data['user_location'], dict):
+            data['user_location'] = data.pop('user_location')
         elif 'city_of_residence' in data and isinstance(data['city_of_residence'], dict):
             data['user_location'] = data.pop('city_of_residence')
         elif 'location' in data and isinstance(data['location'], dict):
             data['user_location'] = data.pop('location')
 
-        # Create the user with location data
+        # Create user using serializer
         serializer = UserRegistrationSerializer(data=data)
         if serializer.is_valid():
             user = serializer.save()
+
+            # Generate OTP for email verification
             otp = ''.join(random.choices(string.digits, k=6))
             OTP.objects.create(user=user, code=otp, purpose='email_verification')
+
             try:
                 send_verification_email(user, otp)
-                return standard_response(
-                    data={
-                        'message': 'Registration successful. Please check your email for verification code.',
-                        'user_id': user.id
-                    },
-                    status_code=status.HTTP_201_CREATED
-                )
             except Exception as e:
-                return standard_response(
-                    data={
-                        'message': 'Registration successful but email verification failed. Please try resending OTP.',
-                        'user_id': user.id,
-                        'warning': str(e)
-                    },
-                    status_code=status.HTTP_201_CREATED
-                )
+                warning = str(e)
+            else:
+                warning = None
+
+            # Save user_location properly as LocationData object
+            user_location = serializer.validated_data.get('user_location', None)
+            if user_location and hasattr(user, 'profile'):
+                profile = user.profile
+                from listings.models import LocationData
+                from django.db import IntegrityError
+
+                location_data = {
+                    'name': user_location['name'],
+                    'country': user_location['country'],
+                    'country_code': user_location.get('country_code') or user_location.get('countryCode')
+                }
+
+                try:
+                    location, created = LocationData.objects.get_or_create(**location_data)
+                except IntegrityError:
+                    location = LocationData.objects.get(**location_data)
+
+                # Assign the LocationData object to profile.user_location
+                profile.user_location = location
+
+                # Also update preferences
+                preferences = profile.preferences or {}
+                if isinstance(preferences, str) and preferences.strip():
+                    import json
+                    try:
+                        preferences = json.loads(preferences.replace("'", '"'))
+                    except:
+                        preferences = {}
+                elif not isinstance(preferences, dict):
+                    preferences = {}
+
+                preferences['location'] = {
+                    'id': location.id,
+                    'name': location.name,
+                    'country': location.country,
+                    'countryCode': location.country_code
+                }
+
+                profile.preferences = preferences
+                profile.save()
+
+            # Serialize profile to return in response
+            profile_serializer = ProfileSerializer(user.profile)
+
+            return standard_response(
+                data={
+                    'message': 'Registration successful. Please check your email for verification code.',
+                    'user_id': user.id,
+                    'profile': profile_serializer.data,
+                    'warning': warning
+                },
+                status_code=status.HTTP_201_CREATED
+            )
+
+        # If serializer invalid
         return standard_response(
             status_code=status.HTTP_400_BAD_REQUEST,
             error=[f"{field}: {error[0]}" for field, error in serializer.errors.items()]
@@ -1798,10 +1846,34 @@ class AppleSignInView(APIView):
             )
 
         try:
+            # Step 1: Get token header
             unverified_header = jwt.get_unverified_header(token)
-            apple_keys = requests.get(settings.APPLE_PUBLIC_KEY_URL).json()['keys']
-            key = next(k for k in apple_keys if k['kid'] == unverified_header['kid'])
+
+            # Step 2: Fetch Apple public keys
+            response = requests.get(settings.APPLE_PUBLIC_KEY_URL, timeout=5)
+            if response.status_code != 200:
+                return standard_response(
+                    status_code=status.HTTP_502_BAD_GATEWAY,
+                    error=['Failed to fetch Apple public keys']
+                )
+            apple_keys = response.json().get('keys', [])
+            if not apple_keys:
+                return standard_response(
+                    status_code=status.HTTP_502_BAD_GATEWAY,
+                    error=['No Apple public keys found']
+                )
+
+            # Step 3: Find matching key by 'kid'
+            key = next((k for k in apple_keys if k['kid'] == unverified_header['kid']), None)
+            if not key:
+                return standard_response(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    error=['No matching Apple key found for token']
+                )
+
             public_key = RSAAlgorithm.from_jwk(key)
+
+            # Step 4: Decode the token
             decoded = jwt.decode(
                 token,
                 public_key,
@@ -1810,25 +1882,29 @@ class AppleSignInView(APIView):
                 issuer='https://appleid.apple.com'
             )
 
-            # Get user info from the token
             email = decoded.get('email') or request.data.get('email')
             apple_id = decoded['sub']
-            full_name = request.data.get('fullName')
+            full_name = request.data.get('fullName') or ""
 
-            try:
-                user = CustomUser.objects.get(email=email)
-                if not user.apple_id:
-                    user.apple_id = apple_id
-                    user.save()
-                if full_name:
-                    user.profile.full_name = full_name
-                    user.profile.save()
-            except CustomUser.DoesNotExist:
-                return standard_response(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    error=['Please sign up first']
-                )
-            # Generate tokens
+            # Step 5: Lookup or create user
+            user, created_user = CustomUser.objects.get_or_create(
+                email=email,
+                defaults={'apple_id': apple_id, 'username': email.split("@")[0]}
+            )
+            if not created_user and not user.apple_id:
+                user.apple_id = apple_id
+                user.save()
+
+            # Step 6: Get or create profile safely
+            profile, created_profile = Profile.objects.get_or_create(
+                user=user,
+                defaults={'full_name': full_name}
+            )
+            if full_name and not created_profile:
+                profile.full_name = full_name
+                profile.save()
+
+            # Step 7: Generate tokens
             refresh = RefreshToken.for_user(user)
 
             return standard_response(
@@ -1840,17 +1916,28 @@ class AppleSignInView(APIView):
                 status_code=status.HTTP_200_OK
             )
 
+        except jwt.ExpiredSignatureError:
+            return standard_response(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                error=['Apple token has expired']
+            )
         except jwt.InvalidTokenError as e:
             return standard_response(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                error=[f'Invalid token: {str(e)}']
+                error=[f'Invalid Apple token: {str(e)}']
+            )
+        except requests.RequestException as e:
+            return standard_response(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                error=[f'Failed to fetch Apple keys: {str(e)}']
             )
         except Exception as e:
+            import traceback
+            print(traceback.format_exc())
             return standard_response(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                error=[f'An error occurred: {str(e)}']
+                error=[f'An unexpected error occurred: {str(e)}']
             )
-
 
 class IdTypeViewSet(StandardResponseViewSet):
     """
@@ -1867,3 +1954,26 @@ class IdTypeViewSet(StandardResponseViewSet):
 
     def perform_create(self, serializer):
         serializer.save()
+
+
+
+class ReportUserViewSet(StandardResponseViewSet):
+    """
+    API endpoint for reporting users
+    """
+    queryset = ReportUser.objects.all()
+    serializer_class = ReportUserSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_permissions(self):
+        if self.action in ['list', 'retrieve']:
+            return [permissions.IsAdminUser()]
+        return [permissions.IsAuthenticated()]
+
+    def get_queryset(self):
+        if self.request.user.is_staff:
+            return ReportUser.objects.all()
+        return ReportUser.objects.filter(reporter=self.request.user)
+
+    def perform_create(self, serializer):
+        serializer.save(reporter=self.request.user)

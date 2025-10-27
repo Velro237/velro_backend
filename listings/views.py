@@ -5,6 +5,8 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from django.db.models import Q
 from datetime import datetime
+
+from django.utils import timezone
 from .models import TravelListing, PackageRequest, Alert, Country, Region, Review
 from .serializers import TravelListingSerializer, PackageRequestSerializer, AlertSerializer, CountrySerializer, \
     RegionSerializer, ReviewSerializer, TransportTypeSerializer, PackageTypeSerializer
@@ -115,6 +117,10 @@ class TravelListingViewSet(StandardResponseViewSet):
         - status: filter by status
         """
         queryset = TravelListing.objects.all().order_by('-created_at')
+
+        # Always hide listings whose travel dates are in the past
+        today = timezone.now().date()
+        queryset = queryset.filter(travel_date__gte=today)
         
         # For delete operations, allow authenticated users to access their own listings regardless of status
         if self.action == 'destroy' and self.request.user.is_authenticated:
